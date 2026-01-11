@@ -6,7 +6,7 @@
 # Includes:
 # - claude-say (TTS) - Text-to-Speech via macOS 'say'
 # - claude-listen (STT) - Speech-to-Text with Parakeet-MLX (fast, Apple Silicon optimized)
-# - WebRTC VAD - Lightweight voice activity detection (no PyTorch)
+# - Silero VAD - High-accuracy voice activity detection (ONNX + CoreML for Neural Engine)
 #
 
 set -e
@@ -27,7 +27,7 @@ REPO_URL="https://github.com/alamparelli/mcp-claude-say.git"
 echo -e "${BLUE}╔════════════════════════════════════════╗${NC}"
 echo -e "${BLUE}║     mcp-claude-say Installer           ║${NC}"
 echo -e "${BLUE}║     TTS + STT for Claude Code (macOS)  ║${NC}"
-echo -e "${BLUE}║     Using Parakeet-MLX + WebRTC VAD    ║${NC}"
+echo -e "${BLUE}║     Using Parakeet-MLX + Silero VAD    ║${NC}"
 echo -e "${BLUE}╚════════════════════════════════════════╝${NC}"
 echo ""
 
@@ -209,11 +209,16 @@ say -v "?" | head -1 > /dev/null 2>&1 && {
     echo -e "       ${GREEN}macOS speech synthesis ready${NC}"
 }
 
-# Test WebRTC VAD (lightweight)
-"$INSTALL_DIR/venv/bin/python" -c "import webrtcvad; print('WebRTC VAD OK')" 2>/dev/null && {
-    echo -e "       ${GREEN}WebRTC VAD ready (lightweight)${NC}"
+# Test Silero VAD (ONNX + CoreML)
+"$INSTALL_DIR/venv/bin/python" -c "
+import onnxruntime as ort
+providers = ort.get_available_providers()
+coreml = 'CoreML' if 'CoreMLExecutionProvider' in providers else 'CPU'
+print(f'Silero VAD OK ({coreml})')
+" 2>/dev/null && {
+    echo -e "       ${GREEN}Silero VAD ready (ONNX + CoreML)${NC}"
 } || {
-    echo -e "${YELLOW}       Warning: webrtcvad not installed${NC}"
+    echo -e "${YELLOW}       Warning: onnxruntime not installed${NC}"
 }
 
 # Test Parakeet-MLX

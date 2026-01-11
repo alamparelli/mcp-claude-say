@@ -12,7 +12,7 @@ import numpy as np
 from mcp.server.fastmcp import FastMCP
 
 from .audio import AudioCapture, get_capture
-from .vad_light import WebRTCVAD, get_vad, DEFAULT_TRIGGER_WORDS
+from .silero_vad import SileroVAD, get_silero_vad
 from .transcriber_base import BaseTranscriber, TranscriptionResult
 
 import sys
@@ -24,9 +24,9 @@ mcp = FastMCP("claude-listen")
 
 # Configuration via environment variables
 TRANSCRIBER_TYPE = os.environ.get("CLAUDE_LISTEN_TRANSCRIBER", "auto")  # auto, whisper, parakeet
-SILENCE_TIMEOUT = float(os.environ.get("CLAUDE_LISTEN_SILENCE_TIMEOUT", "1.0"))  # Reduced to 1.0 for faster response
-TRIGGER_WORD_STREAMING = os.environ.get("CLAUDE_LISTEN_TRIGGER_STREAMING", "false").lower() == "true"
-TRIGGER_CHECK_INTERVAL = float(os.environ.get("CLAUDE_LISTEN_TRIGGER_INTERVAL", "1.5"))  # Check for trigger words every N seconds
+SILENCE_TIMEOUT = float(os.environ.get("CLAUDE_LISTEN_SILENCE_TIMEOUT", "1.5"))  # Ported from Bun: 1500ms
+SPEECH_THRESHOLD = float(os.environ.get("CLAUDE_LISTEN_SPEECH_THRESHOLD", "0.5"))  # Silero probability threshold
+USE_COREML = os.environ.get("CLAUDE_LISTEN_USE_COREML", "true").lower() == "true"
 
 # Global state
 _is_listening = False
@@ -34,11 +34,10 @@ _audio_buffer: list[np.ndarray] = []
 _last_transcription: Optional[TranscriptionResult] = None
 _transcription_ready = threading.Event()
 _buffer_lock = threading.Lock()
-_trigger_check_timer: Optional[threading.Timer] = None
 
 # Components (lazy loaded)
 _audio: Optional[AudioCapture] = None
-_vad: Optional[WebRTCVAD] = None
+_vad: Optional[SileroVAD] = None
 _transcriber: Optional[BaseTranscriber] = None
 
 
@@ -62,51 +61,9 @@ def _on_audio_chunk(chunk: np.ndarray) -> None:
     _vad.process_audio(chunk)
 
 
-def _check_trigger_words() -> None:
-    """Periodically check for trigger words during speech using streaming transcription."""
-    global _last_transcription, _audio_buffer, _trigger_check_timer
-
-    if not _is_listening or not TRIGGER_WORD_STREAMING:
-        return
-
-    # Check if VAD still detecting speech
-    if _vad is None or not _vad.is_speaking:
-        return
-
-    # Get current audio buffer without clearing it
-    with _buffer_lock:
-        if not _audio_buffer or len(_audio_buffer) < 3:  # Need at least some audio
-            # Schedule next check
-            _trigger_check_timer = threading.Timer(TRIGGER_CHECK_INTERVAL, _check_trigger_words)
-            _trigger_check_timer.start()
-            return
-        audio = np.concatenate(_audio_buffer)
-
-    # Do streaming transcription (fast, less accurate)
-    if _transcriber is not None and len(audio) > 0 and hasattr(_transcriber, 'transcribe_streaming'):
-        try:
-            result = _transcriber.transcribe_streaming(audio)
-            text_lower = result.text.lower().strip()
-
-            # Check if any trigger word is at the end
-            for trigger in DEFAULT_TRIGGER_WORDS:
-                if text_lower.endswith(trigger) or text_lower.endswith(trigger + "."):
-                    # Trigger word detected! Force speech end
-                    if _vad:
-                        _vad._trigger_speech_end()
-                    return
-        except Exception:
-            pass  # Ignore transcription errors during streaming
-
-    # Schedule next check if still speaking
-    if _vad and _vad.is_speaking:
-        _trigger_check_timer = threading.Timer(TRIGGER_CHECK_INTERVAL, _check_trigger_words)
-        _trigger_check_timer.start()
-
-
 def _on_speech_start() -> None:
     """Called when VAD detects speech starting."""
-    global _audio_buffer, _trigger_check_timer
+    global _audio_buffer
 
     # Clear any old buffer
     with _buffer_lock:
@@ -116,20 +73,10 @@ def _on_speech_start() -> None:
     signal_stop_speaking()
     get_coordinator().on_speech_detected()
 
-    # Start trigger word checking if enabled
-    if TRIGGER_WORD_STREAMING and _trigger_check_timer is None:
-        _trigger_check_timer = threading.Timer(TRIGGER_CHECK_INTERVAL, _check_trigger_words)
-        _trigger_check_timer.start()
-
 
 def _on_speech_end() -> None:
     """Called when VAD detects speech ending (after silence timeout)."""
-    global _last_transcription, _audio_buffer, _trigger_check_timer
-
-    # Cancel trigger word checking
-    if _trigger_check_timer is not None:
-        _trigger_check_timer.cancel()
-        _trigger_check_timer = None
+    global _last_transcription, _audio_buffer
 
     # Get buffered audio
     with _buffer_lock:
@@ -176,10 +123,12 @@ def _initialize_components() -> None:
         _transcriber = _create_transcriber()
 
     if _vad is None:
-        _vad = WebRTCVAD(
+        _vad = SileroVAD(
             silence_timeout=SILENCE_TIMEOUT,
+            speech_threshold=SPEECH_THRESHOLD,
             on_speech_start=_on_speech_start,
             on_speech_end=_on_speech_end,
+            use_coreml=USE_COREML,
         )
 
 
@@ -285,12 +234,14 @@ def listening_status() -> str:
     """
     coordinator = get_coordinator()
 
+    coreml_status = "CoreML" if USE_COREML else "CPU"
     status_parts = [
         f"Listening: {'Yes' if _is_listening else 'No'}",
         f"Speaking (TTS): {'Yes' if coordinator.is_speaking else 'No'}",
         f"Transcriber: {_transcriber.name if _transcriber else 'None'}",
-        f"VAD: WebRTC (lightweight)",
+        f"VAD: Silero (ONNX + {coreml_status})",
         f"Silence timeout: {SILENCE_TIMEOUT}s",
+        f"Speech threshold: {SPEECH_THRESHOLD}",
     ]
 
     if _vad:
