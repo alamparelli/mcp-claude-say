@@ -104,6 +104,7 @@ speak("Fin de la session vocale. À bientôt!")
 2. **No code vocally** - Never read code, paths, or logs aloud
 3. **Match language** - Respond in the same language as the user
 4. **Brief by default** - Keep responses short unless asked otherwise
+5. **Execute directly, don't announce** - When performing an action (searching, running commands, editing), just do it. Don't say "I'm going to check..." or "Let me look at...". Execute first, then report results. Only speak before acting if you have a clarifying question or an important remark to share.
 
 ## Error Handling
 

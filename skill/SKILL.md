@@ -65,6 +65,7 @@ The skill supports three voice communication modes:
    - File paths
    - Long lists (summarize them instead)
 3. **Match the user's language** - detect the language the user is using and respond vocally in that same language
+4. **Execute directly, don't announce** - When performing an action (searching files, running commands, editing code), just do it without announcing "I'm going to check..." or "Let me look at...". Execute first, then report results. Only speak before acting if you have a clarifying question or an important remark to share.
 
 ## Examples
 
