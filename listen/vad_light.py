@@ -31,7 +31,7 @@ class WebRTCVAD:
 
     def __init__(
         self,
-        silence_timeout: float = 1.5,
+        silence_timeout: float = 1.0,
         speech_threshold: int = 2,  # VAD aggressiveness 0-3 (2 = balanced sensitivity)
         on_speech_start: Optional[Callable[[], None]] = None,
         on_speech_end: Optional[Callable[[], None]] = None,

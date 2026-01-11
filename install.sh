@@ -49,7 +49,15 @@ if ! command -v python3 &> /dev/null; then
     exit 1
 fi
 
-echo -e "${GREEN}[1/5]${NC} Creating installation directory..."
+# Check for Bun (optional but recommended for faster listen)
+BUN_PATH=""
+if command -v bun &> /dev/null; then
+    BUN_PATH="bun"
+elif [[ -f "$HOME/.bun/bin/bun" ]]; then
+    BUN_PATH="$HOME/.bun/bin/bun"
+fi
+
+echo -e "${GREEN}[1/6]${NC} Creating installation directory..."
 
 # Determine source directory (local or need to clone)
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -85,9 +93,13 @@ if [[ "$SOURCE_DIR" != "$INSTALL_DIR" ]]; then
     if [[ -d "$SOURCE_DIR/shared" ]]; then
         cp -r "$SOURCE_DIR/shared" "$INSTALL_DIR/"
     fi
+    # Copy listen-bun module
+    if [[ -d "$SOURCE_DIR/listen-bun" ]]; then
+        cp -r "$SOURCE_DIR/listen-bun" "$INSTALL_DIR/"
+    fi
 fi
 
-echo -e "${GREEN}[2/5]${NC} Setting up Python virtual environment..."
+echo -e "${GREEN}[2/6]${NC} Setting up Python virtual environment..."
 
 cd "$INSTALL_DIR"
 python3 -m venv venv
@@ -95,7 +107,26 @@ source venv/bin/activate
 pip install --quiet --upgrade pip
 pip install --quiet -r requirements.txt
 
-echo -e "${GREEN}[3/5]${NC} Installing Claude Code skills..."
+echo -e "${GREEN}[3/6]${NC} Setting up Bun (fast listen module)..."
+
+# Install Bun if not present
+if [[ -z "$BUN_PATH" ]]; then
+    echo -e "       Installing Bun runtime..."
+    curl -fsSL https://bun.sh/install | bash 2>/dev/null
+    BUN_PATH="$HOME/.bun/bin/bun"
+fi
+
+# Install Bun dependencies for listen-bun
+if [[ -d "$INSTALL_DIR/listen-bun" ]] && [[ -n "$BUN_PATH" ]] && [[ -f "$BUN_PATH" ]]; then
+    cd "$INSTALL_DIR/listen-bun"
+    "$BUN_PATH" install --silent 2>/dev/null || echo -e "${YELLOW}       Warning: Bun dependencies install failed${NC}"
+    cd "$INSTALL_DIR"
+    echo -e "       ${GREEN}Bun listen module ready${NC}"
+else
+    echo -e "${YELLOW}       Skipping Bun setup (not available)${NC}"
+fi
+
+echo -e "${GREEN}[4/6]${NC} Installing Claude Code skills..."
 
 # Install speak skill
 mkdir -p "$SKILL_DIR"
@@ -115,7 +146,7 @@ else
     echo -e "${YELLOW}       Warning: conversation SKILL.md not found${NC}"
 fi
 
-echo -e "${GREEN}[4/5]${NC} Configuring Claude Code MCP servers..."
+echo -e "${GREEN}[5/6]${NC} Configuring Claude Code MCP servers..."
 
 # Create settings.json if it doesn't exist
 mkdir -p "$(dirname "$CLAUDE_SETTINGS")"
@@ -163,7 +194,7 @@ else
     echo -e "       }${NC}"
 fi
 
-echo -e "${GREEN}[5/5]${NC} Testing installation..."
+echo -e "${GREEN}[6/6]${NC} Testing installation..."
 
 # Quick test - MCP
 "$INSTALL_DIR/venv/bin/python" -c "from mcp.server.fastmcp import FastMCP; print('MCP module OK')" 2>/dev/null && {
@@ -198,6 +229,17 @@ say -v "?" | head -1 > /dev/null 2>&1 && {
 } || {
     echo -e "${YELLOW}       Warning: sounddevice may need manual installation${NC}"
 }
+
+# Test Bun listen module
+if [[ -n "$BUN_PATH" ]] && [[ -f "$BUN_PATH" ]] && [[ -d "$INSTALL_DIR/listen-bun" ]]; then
+    cd "$INSTALL_DIR/listen-bun"
+    "$BUN_PATH" build src/index.ts --target=bun --outdir=dist 2>/dev/null && {
+        echo -e "       ${GREEN}Bun listen module ready (fast mode)${NC}"
+    } || {
+        echo -e "${YELLOW}       Warning: Bun listen module build failed${NC}"
+    }
+    cd "$INSTALL_DIR"
+fi
 
 echo ""
 echo -e "${GREEN}╔════════════════════════════════════════╗${NC}"
