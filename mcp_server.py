@@ -92,6 +92,34 @@ def speak(text: str, voice: str | None = None, speed: float = 1.1) -> str:
 
 
 @mcp.tool()
+def speak_and_wait(text: str, voice: str | None = None, speed: float = 1.1) -> str:
+    """
+    Speak text and wait until speech is finished before returning.
+    Use this instead of speak() + polling queue_status() to reduce API round trips.
+
+    Args:
+        text: The text to speak
+        voice: Voice to use (None = default Siri/system voice)
+        speed: Speech speed (0.5 = slow, 1.0 = normal, 1.1 = default, 2.0 = fast)
+
+    Returns:
+        Confirmation that speech has completed
+    """
+    ensure_worker_running()
+    rate = int(speed * 175)  # 175 words/min = normal speed
+
+    # Add trailing silence so the last word is fully heard
+    text_with_silence = f"{text} [[slnc {TRAILING_SILENCE_MS}]]"
+
+    speech_queue.put((text_with_silence, voice, rate))
+
+    # Wait for the queue to be processed
+    speech_queue.join()
+
+    return "Speech completed"
+
+
+@mcp.tool()
 def stop_speaking() -> str:
     """
     Stop current speech immediately and clear the queue.
