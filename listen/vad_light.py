@@ -32,11 +32,11 @@ class WebRTCVAD:
     def __init__(
         self,
         silence_timeout: float = 1.5,
-        speech_threshold: int = 3,  # VAD aggressiveness 0-3 (3 = most aggressive)
+        speech_threshold: int = 2,  # VAD aggressiveness 0-3 (2 = balanced sensitivity)
         on_speech_start: Optional[Callable[[], None]] = None,
         on_speech_end: Optional[Callable[[], None]] = None,
         trigger_words: Optional[List[str]] = None,
-        min_speech_frames: int = 3,  # Minimum frames to confirm speech
+        min_speech_frames: int = 2,  # Minimum frames to confirm speech (lower = more sensitive)
     ):
         """
         Initialize WebRTC VAD.

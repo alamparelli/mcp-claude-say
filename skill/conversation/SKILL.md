@@ -65,12 +65,30 @@ start_listening()
 # 2. Confirm vocally
 speak("Mode conversation activé. Je t'écoute.")
 
-# 3. Wait for user speech
+# 3. Wait for TTS to finish BEFORE listening for transcription
+# Poll queue_status() until "Status: Silent"
+while queue_status() shows "Speaking":
+    wait briefly
+
+# 4. Only then wait for user speech
 transcription = get_transcription(wait=True)
 
-# 4. Respond vocally
+# 5. Respond vocally
 speak("Your response here...")
 ```
+
+## Critical: TTS/STT Synchronization
+
+**IMPORTANT**: Always wait for TTS to finish speaking before calling `get_transcription()`.
+
+The listen server ignores audio while TTS is speaking (to avoid feedback). If you call `get_transcription()` while TTS is still speaking, you will miss user speech.
+
+**Correct flow:**
+1. Call `speak()`
+2. Poll `queue_status()` until it returns "Status: Silent"
+3. Only then call `get_transcription(wait=True)`
+
+This ensures you don't start waiting for transcription while still talking.
 
 ## Ending Conversation Mode
 

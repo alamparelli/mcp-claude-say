@@ -113,6 +113,13 @@ class AudioCapture:
         """Check if audio capture is active."""
         return self._is_running
 
+    def restart(self) -> None:
+        """Restart audio capture to handle device changes."""
+        was_running = self._is_running
+        self.stop()
+        if was_running:
+            self.start()
+
     @staticmethod
     def list_devices() -> list[dict]:
         """List available audio input devices."""

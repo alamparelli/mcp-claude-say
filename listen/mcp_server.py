@@ -24,7 +24,7 @@ mcp = FastMCP("claude-listen")
 
 # Configuration via environment variables
 TRANSCRIBER_TYPE = os.environ.get("CLAUDE_LISTEN_TRANSCRIBER", "auto")  # auto, whisper, parakeet
-SILENCE_TIMEOUT = float(os.environ.get("CLAUDE_LISTEN_SILENCE_TIMEOUT", "1.5"))  # Reduced from 2.0
+SILENCE_TIMEOUT = float(os.environ.get("CLAUDE_LISTEN_SILENCE_TIMEOUT", "2.0"))  # Back to 2.0 for better phrase completion
 
 # Global state
 _is_listening = False
@@ -44,6 +44,11 @@ def _on_audio_chunk(chunk: np.ndarray) -> None:
     global _audio_buffer, _vad
 
     if not _is_listening or _vad is None:
+        return
+
+    # Skip audio processing while TTS is speaking to avoid feedback loop
+    coordinator = get_coordinator()
+    if coordinator.is_speaking:
         return
 
     # Add to buffer
@@ -187,7 +192,7 @@ def stop_listening() -> str:
 
 
 @mcp.tool()
-def get_transcription(wait: bool = True, timeout: float = 30.0) -> str:
+def get_transcription(wait: bool = True, timeout: float = 15.0) -> str:
     """
     Get the last transcription result.
 
@@ -244,6 +249,35 @@ def listening_status() -> str:
         status_parts.append(f"Language: {_last_transcription.language}")
 
     return "\n".join(status_parts)
+
+
+@mcp.tool()
+def restart_audio() -> str:
+    """
+    Restart audio capture to handle device changes.
+
+    Use this if you switched audio devices (headphones, microphone, etc.)
+    and the listening stopped working properly.
+
+    Returns:
+        Confirmation message
+    """
+    global _audio, _vad
+
+    if not _is_listening:
+        return "Not currently listening. Start listening first."
+
+    try:
+        if _audio:
+            _audio.restart()
+
+        if _vad:
+            _vad.reset()
+
+        return "Audio capture restarted. Device change should now be handled."
+
+    except Exception as e:
+        return f"Error restarting audio: {e}"
 
 
 @mcp.tool()
