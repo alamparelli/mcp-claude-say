@@ -32,19 +32,15 @@ class ParakeetTranscriber(BaseTranscriber):
         """
         self.model_name = model_name or self.DEFAULT_MODEL
         self._model = None
-        self._processor = None
         self._load_model()
 
     def _load_model(self) -> None:
         """Load the Parakeet model."""
         try:
-            from parakeet_mlx import load_model, transcribe
-
-            # Store transcribe function for later use
-            self._transcribe_fn = transcribe
+            from parakeet_mlx import from_pretrained
 
             # Load model (will download if needed)
-            self._model, self._processor = load_model(self.model_name)
+            self._model = from_pretrained(self.model_name)
 
         except ImportError:
             raise ImportError(
@@ -77,37 +73,20 @@ class ParakeetTranscriber(BaseTranscriber):
         if np.abs(audio).max() > 1.0:
             audio = audio / np.abs(audio).max()
 
-        # Parakeet expects a file path, so we need to save temporarily
-        # or use the direct numpy interface if available
+        # Parakeet requires a file path - save to temp file
+        import soundfile as sf
+
+        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
+            temp_path = f.name
+
         try:
-            # Try direct transcription first (newer versions)
-            from parakeet_mlx import transcribe_array
-            result = transcribe_array(
-                audio,
-                sample_rate=self.SAMPLE_RATE,
-                model=self._model,
-                processor=self._processor,
-            )
-            text = result.get("text", "") if isinstance(result, dict) else str(result)
-
-        except (ImportError, AttributeError):
-            # Fallback: save to temp file
-            import soundfile as sf
-
-            with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
-                temp_path = f.name
-
-            try:
-                sf.write(temp_path, audio, self.SAMPLE_RATE)
-                result = self._transcribe_fn(
-                    temp_path,
-                    model=self._model,
-                    processor=self._processor,
-                )
-                text = result.get("text", "") if isinstance(result, dict) else str(result)
-            finally:
-                if os.path.exists(temp_path):
-                    os.unlink(temp_path)
+            sf.write(temp_path, audio, self.SAMPLE_RATE)
+            result = self._model.transcribe(temp_path)
+            # Extract text from AlignedResult
+            text = result.text if hasattr(result, 'text') else str(result)
+        finally:
+            if os.path.exists(temp_path):
+                os.unlink(temp_path)
 
         return TranscriptionResult(
             text=text.strip(),

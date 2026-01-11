@@ -10,6 +10,7 @@ soundfile
 
 # VAD - Voice Activity Detection (lightweight, C-based)
 webrtcvad
+setuptools  # Required by webrtcvad for pkg_resources
 
 # Speech-to-Text (for claude-listen)
 parakeet-mlx  # Fast STT for Apple Silicon via MLX

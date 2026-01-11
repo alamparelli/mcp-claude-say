@@ -186,7 +186,7 @@ say -v "?" | head -1 > /dev/null 2>&1 && {
 }
 
 # Test Parakeet-MLX
-"$INSTALL_DIR/venv/bin/python" -c "from parakeet_mlx import load_model; print('Parakeet-MLX OK')" 2>/dev/null && {
+"$INSTALL_DIR/venv/bin/python" -c "from parakeet_mlx import from_pretrained; print('Parakeet-MLX OK')" 2>/dev/null && {
     echo -e "       ${GREEN}Parakeet-MLX ready (fast STT)${NC}"
 } || {
     echo -e "${YELLOW}       Warning: parakeet-mlx not installed - will fallback to whisper${NC}"
