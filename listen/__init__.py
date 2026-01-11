@@ -1,11 +1,11 @@
 """
 Claude-Listen - Speech-to-Text module for Claude Code
-Supports Whisper and Parakeet MLX for transcription.
+Uses Parakeet-MLX for fast transcription and WebRTC VAD for lightweight voice detection.
 """
 
 __all__ = [
     "audio",
-    "vad",
+    "vad_light",
     "transcriber",
     "transcriber_base",
     "parakeet_transcriber",

@@ -4,8 +4,9 @@
 # One-line install: curl -sSL https://raw.githubusercontent.com/USER/mcp-claude-say/main/install.sh | bash
 #
 # Includes:
-# - claude-say (TTS) - Text-to-Speech
-# - claude-listen (STT) - Speech-to-Text with Whisper
+# - claude-say (TTS) - Text-to-Speech via macOS 'say'
+# - claude-listen (STT) - Speech-to-Text with Parakeet-MLX (fast, Apple Silicon optimized)
+# - WebRTC VAD - Lightweight voice activity detection (no PyTorch)
 #
 
 set -e
@@ -23,12 +24,10 @@ SKILL_DIR="$HOME/.claude/skills/speak"
 SKILL_CONVERSATION_DIR="$HOME/.claude/skills/conversation"
 CLAUDE_SETTINGS="$HOME/.claude.json"
 REPO_URL="https://github.com/alamparelli/mcp-claude-say.git"
-MODELS_DIR="$HOME/models"
-WHISPER_MODEL="ggml-large-v3-turbo.bin"
-
 echo -e "${BLUE}╔════════════════════════════════════════╗${NC}"
 echo -e "${BLUE}║     mcp-claude-say Installer           ║${NC}"
 echo -e "${BLUE}║     TTS + STT for Claude Code (macOS)  ║${NC}"
+echo -e "${BLUE}║     Using Parakeet-MLX + WebRTC VAD    ║${NC}"
 echo -e "${BLUE}╚════════════════════════════════════════╝${NC}"
 echo ""
 
@@ -50,7 +49,7 @@ if ! command -v python3 &> /dev/null; then
     exit 1
 fi
 
-echo -e "${GREEN}[1/7]${NC} Creating installation directory..."
+echo -e "${GREEN}[1/5]${NC} Creating installation directory..."
 
 # Determine source directory (local or need to clone)
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -88,7 +87,7 @@ if [[ "$SOURCE_DIR" != "$INSTALL_DIR" ]]; then
     fi
 fi
 
-echo -e "${GREEN}[2/7]${NC} Setting up Python virtual environment..."
+echo -e "${GREEN}[2/5]${NC} Setting up Python virtual environment..."
 
 cd "$INSTALL_DIR"
 python3 -m venv venv
@@ -96,7 +95,7 @@ source venv/bin/activate
 pip install --quiet --upgrade pip
 pip install --quiet -r requirements.txt
 
-echo -e "${GREEN}[3/7]${NC} Installing Claude Code skills..."
+echo -e "${GREEN}[3/5]${NC} Installing Claude Code skills..."
 
 # Install speak skill
 mkdir -p "$SKILL_DIR"
@@ -116,7 +115,7 @@ else
     echo -e "${YELLOW}       Warning: conversation SKILL.md not found${NC}"
 fi
 
-echo -e "${GREEN}[4/7]${NC} Configuring Claude Code MCP servers..."
+echo -e "${GREEN}[4/5]${NC} Configuring Claude Code MCP servers..."
 
 # Create settings.json if it doesn't exist
 mkdir -p "$(dirname "$CLAUDE_SETTINGS")"
@@ -140,7 +139,9 @@ if command -v jq &> /dev/null; then
             "command": ($dir + "/venv/bin/python"),
             "args": ["-m", "listen.mcp_server"],
             "cwd": $dir,
-            "env": {}
+            "env": {
+                "PYTHONPATH": $dir
+            }
         }
     ' "$CLAUDE_SETTINGS" > "$TEMP_FILE" && mv "$TEMP_FILE" "$CLAUDE_SETTINGS"
 else
@@ -156,35 +157,15 @@ else
     echo -e "         \"claude-listen\": {"
     echo -e "           \"command\": \"$INSTALL_DIR/venv/bin/python\","
     echo -e "           \"args\": [\"-m\", \"listen.mcp_server\"],"
-    echo -e "           \"cwd\": \"$INSTALL_DIR\""
+    echo -e "           \"cwd\": \"$INSTALL_DIR\","
+    echo -e "           \"env\": { \"PYTHONPATH\": \"$INSTALL_DIR\" }"
     echo -e "         }"
     echo -e "       }${NC}"
 fi
 
-echo -e "${GREEN}[5/7]${NC} Downloading Whisper model (if needed)..."
+echo -e "${GREEN}[5/5]${NC} Testing installation..."
 
-mkdir -p "$MODELS_DIR"
-if [[ -f "$MODELS_DIR/$WHISPER_MODEL" ]]; then
-    echo -e "       ${GREEN}Whisper model already exists${NC}"
-else
-    echo -e "       Downloading large-v3-turbo (~1.5GB)..."
-    curl -L -o "$MODELS_DIR/$WHISPER_MODEL" \
-        "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/$WHISPER_MODEL" || {
-        echo -e "${YELLOW}       Warning: Failed to download Whisper model${NC}"
-        echo -e "${YELLOW}       You can download it manually later${NC}"
-    }
-fi
-
-echo -e "${GREEN}[6/7]${NC} Pre-loading Silero VAD model..."
-"$INSTALL_DIR/venv/bin/python" -c "import torch; torch.hub.load('snakers4/silero-vad', 'silero_vad', force_reload=False)" 2>/dev/null && {
-    echo -e "       ${GREEN}Silero VAD ready${NC}"
-} || {
-    echo -e "${YELLOW}       Warning: Silero VAD will download on first use${NC}"
-}
-
-echo -e "${GREEN}[7/7]${NC} Testing installation..."
-
-# Quick test
+# Quick test - MCP
 "$INSTALL_DIR/venv/bin/python" -c "from mcp.server.fastmcp import FastMCP; print('MCP module OK')" 2>/dev/null && {
     echo -e "       ${GREEN}MCP server ready${NC}"
 } || {
@@ -197,11 +178,25 @@ say -v "?" | head -1 > /dev/null 2>&1 && {
     echo -e "       ${GREEN}macOS speech synthesis ready${NC}"
 }
 
-# Test STT dependencies
-"$INSTALL_DIR/venv/bin/python" -c "import sounddevice; import torch; from faster_whisper import WhisperModel" 2>/dev/null && {
-    echo -e "       ${GREEN}STT dependencies ready${NC}"
+# Test WebRTC VAD (lightweight)
+"$INSTALL_DIR/venv/bin/python" -c "import webrtcvad; print('WebRTC VAD OK')" 2>/dev/null && {
+    echo -e "       ${GREEN}WebRTC VAD ready (lightweight)${NC}"
 } || {
-    echo -e "${YELLOW}       Warning: Some STT dependencies may need manual installation${NC}"
+    echo -e "${YELLOW}       Warning: webrtcvad not installed${NC}"
+}
+
+# Test Parakeet-MLX
+"$INSTALL_DIR/venv/bin/python" -c "from parakeet_mlx import load_model; print('Parakeet-MLX OK')" 2>/dev/null && {
+    echo -e "       ${GREEN}Parakeet-MLX ready (fast STT)${NC}"
+} || {
+    echo -e "${YELLOW}       Warning: parakeet-mlx not installed - will fallback to whisper${NC}"
+}
+
+# Test audio capture
+"$INSTALL_DIR/venv/bin/python" -c "import sounddevice; import numpy; print('Audio OK')" 2>/dev/null && {
+    echo -e "       ${GREEN}Audio capture ready${NC}"
+} || {
+    echo -e "${YELLOW}       Warning: sounddevice may need manual installation${NC}"
 }
 
 echo ""

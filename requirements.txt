@@ -6,13 +6,10 @@ mcp>=1.0.0
 # Audio capture (for claude-listen)
 sounddevice
 numpy
+soundfile
 
-# VAD - Voice Activity Detection (for claude-listen)
-torch
-torchaudio
+# VAD - Voice Activity Detection (lightweight, C-based)
+webrtcvad
 
 # Speech-to-Text (for claude-listen)
-# Choose one: parakeet-mlx (faster on Apple Silicon) or faster-whisper
-parakeet-mlx  # Recommended for Apple Silicon - much faster
-faster-whisper  # Fallback for non-Apple hardware
-soundfile  # Required for Parakeet audio handling
+parakeet-mlx  # Fast STT for Apple Silicon via MLX
