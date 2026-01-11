@@ -38,18 +38,37 @@ Ce repo contient deux serveurs MCP complémentaires pour créer une boucle vocal
 
 | Composant | Technologie | Rôle |
 |-----------|-------------|------|
-| VAD | Silero VAD | Détection d'activité vocale |
-| STT | whisper.cpp (large-v3-turbo) | Transcription |
-| Audio | pyaudio / sounddevice | Capture micro |
-| Langue | Auto-détect | Whisper détecte automatiquement |
+| VAD | Silero VAD | Détection d'activité vocale + trigger words |
+| STT | Parakeet MLX (par défaut) / Whisper | Transcription |
+| Audio | sounddevice | Capture micro |
+| Langue | Auto-détect | Détection automatique |
+
+### Transcribers disponibles
+
+| Transcriber | Performance | RAM | Recommandé pour |
+|-------------|-------------|-----|-----------------|
+| **Parakeet MLX** | ~60x temps réel | ~2 GB | Apple Silicon (M1/M2/M3) |
+| Whisper (faster-whisper) | ~10x temps réel | ~4-6 GB | GPU CUDA / Fallback |
+
+Configuration via variable d'environnement :
+```bash
+CLAUDE_LISTEN_TRANSCRIBER=parakeet  # ou whisper, auto (défaut)
+```
 
 ### Paramètres
 
-| Paramètre | Valeur | Description |
-|-----------|--------|-------------|
-| Silence timeout | 2 secondes | Délai avant transcription |
-| Source audio | Microphone only | Pas de capture système |
-| Modèle Whisper | large-v3-turbo | Meilleur compromis qualité/vitesse |
+| Paramètre | Valeur par défaut | Variable d'env | Description |
+|-----------|-------------------|----------------|-------------|
+| Silence timeout | 2 secondes | `CLAUDE_LISTEN_SILENCE_TIMEOUT` | Délai avant transcription |
+| Quick check timeout | 0.5 secondes | `CLAUDE_LISTEN_QUICK_CHECK_TIMEOUT` | Délai avant vérification trigger word |
+| Source audio | Microphone only | - | Pas de capture système |
+
+### Trigger Words (mots déclencheurs)
+
+Dire un de ces mots à la fin d'une phrase déclenche immédiatement la transcription (sans attendre 2s) :
+
+- "stop", "terminé", "fini", "ok", "c'est tout"
+- "that's it", "done", "end", "over", "go"
 
 ### Tools MCP
 
@@ -200,9 +219,41 @@ numpy
 | RAM | ~2GB (modèle chargé) |
 | CPU | Utilise Metal/GPU si disponible |
 
+## Optimisation Claude Code - Model Switching
+
+Pour réduire la latence des réponses vocales, configurer Claude Code pour utiliser Haiku lors des conversations vocales :
+
+### Configuration recommandée
+
+Dans le skill `conversation`, ajouter une instruction pour utiliser Haiku :
+
+```markdown
+# Dans le skill conversation
+model: haiku  # Réponses vocales rapides
+```
+
+Ou via le paramètre `model` dans les Task agents :
+
+```python
+# Pour les réponses texte (qualité)
+model="opus"  # ou "sonnet"
+
+# Pour les réponses vocales (vitesse)
+model="haiku"  # 3-5x plus rapide
+```
+
+### Gain de latence
+
+| Modèle | Temps réponse typique | Recommandé pour |
+|--------|----------------------|-----------------|
+| Opus | 2-4s | Texte à l'écran, tâches complexes |
+| Sonnet | 1-2s | Équilibre qualité/vitesse |
+| **Haiku** | 0.3-0.8s | **Réponses vocales** |
+
 ## Évolutions futures
 
 1. **Migration Rust** : Si latence Python insuffisante
 2. **Streaming transcription** : Afficher texte en temps réel
 3. **Wake word** : "Hey Claude" pour activer sans skill
 4. **Multi-langue explicit** : Forcer une langue spécifique
+5. **Streaming TTS** : Envoyer au TTS phrase par phrase pendant la génération

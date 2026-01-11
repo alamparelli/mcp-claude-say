@@ -62,6 +62,10 @@ def ensure_worker_running():
         worker_thread.start()
 
 
+# Trailing silence in milliseconds to prevent last word from being cut off
+TRAILING_SILENCE_MS = 300
+
+
 @mcp.tool()
 def speak(text: str, voice: str | None = None, speed: float = 1.1) -> str:
     """
@@ -77,7 +81,12 @@ def speak(text: str, voice: str | None = None, speed: float = 1.1) -> str:
     """
     ensure_worker_running()
     rate = int(speed * 175)  # 175 words/min = normal speed
-    speech_queue.put((text, voice, rate))
+
+    # Add trailing silence so the last word is fully heard
+    # macOS say command supports [[slnc N]] where N is silence in milliseconds
+    text_with_silence = f"{text} [[slnc {TRAILING_SILENCE_MS}]]"
+
+    speech_queue.put((text_with_silence, voice, rate))
     preview = text[:50] + "..." if len(text) > 50 else text
     return f"Added to queue: {preview}"
 

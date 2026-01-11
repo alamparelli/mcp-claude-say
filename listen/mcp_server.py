@@ -1,17 +1,19 @@
 #!/usr/bin/env python3
 """
 Claude-Listen MCP Server
-Speech-to-Text server for Claude Code with VAD and Whisper.
+Speech-to-Text server for Claude Code with VAD and Whisper/Parakeet.
+Supports trigger words for immediate transcription.
 """
 
+import os
 import threading
-from typing import Optional
+from typing import Optional, Union
 import numpy as np
 from mcp.server.fastmcp import FastMCP
 
 from .audio import AudioCapture, get_capture
-from .vad import SileroVAD, get_vad
-from .transcriber import WhisperTranscriber, get_transcriber, TranscriptionResult
+from .vad import SileroVAD, get_vad, DEFAULT_TRIGGER_WORDS
+from .transcriber_base import BaseTranscriber, TranscriptionResult
 
 import sys
 from pathlib import Path
@@ -19,6 +21,11 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from shared.coordination import signal_stop_speaking, get_coordinator
 
 mcp = FastMCP("claude-listen")
+
+# Configuration via environment variables
+TRANSCRIBER_TYPE = os.environ.get("CLAUDE_LISTEN_TRANSCRIBER", "auto")  # auto, whisper, parakeet
+SILENCE_TIMEOUT = float(os.environ.get("CLAUDE_LISTEN_SILENCE_TIMEOUT", "2.0"))
+QUICK_CHECK_TIMEOUT = float(os.environ.get("CLAUDE_LISTEN_QUICK_CHECK_TIMEOUT", "0.5"))
 
 # Global state
 _is_listening = False
@@ -30,7 +37,7 @@ _buffer_lock = threading.Lock()
 # Components (lazy loaded)
 _audio: Optional[AudioCapture] = None
 _vad: Optional[SileroVAD] = None
-_transcriber: Optional[WhisperTranscriber] = None
+_transcriber: Optional[BaseTranscriber] = None
 
 
 def _on_audio_chunk(chunk: np.ndarray) -> None:
@@ -78,6 +85,45 @@ def _on_speech_end() -> None:
         _transcription_ready.set()
 
 
+def _on_quick_check() -> Optional[str]:
+    """Called for quick transcription check (trigger word detection)."""
+    global _audio_buffer
+
+    # Get current buffered audio without clearing
+    with _buffer_lock:
+        if not _audio_buffer:
+            return None
+        audio = np.concatenate(_audio_buffer)
+
+    # Do streaming transcription
+    if _transcriber is not None and len(audio) > 0:
+        result = _transcriber.transcribe_streaming(audio)
+        return result.text
+
+    return None
+
+
+def _create_transcriber() -> BaseTranscriber:
+    """Create the appropriate transcriber based on configuration."""
+    transcriber_type = TRANSCRIBER_TYPE.lower()
+
+    if transcriber_type == "parakeet":
+        from .parakeet_transcriber import ParakeetTranscriber
+        return ParakeetTranscriber()
+
+    elif transcriber_type == "whisper":
+        from .transcriber import WhisperTranscriber
+        return WhisperTranscriber()
+
+    else:  # auto - try parakeet first, fall back to whisper
+        try:
+            from .parakeet_transcriber import ParakeetTranscriber
+            return ParakeetTranscriber()
+        except ImportError:
+            from .transcriber import WhisperTranscriber
+            return WhisperTranscriber()
+
+
 def _initialize_components() -> None:
     """Initialize audio, VAD, and transcriber components."""
     global _audio, _vad, _transcriber
@@ -85,15 +131,17 @@ def _initialize_components() -> None:
     if _audio is None:
         _audio = AudioCapture(on_audio=_on_audio_chunk)
 
+    if _transcriber is None:
+        _transcriber = _create_transcriber()
+
     if _vad is None:
         _vad = SileroVAD(
-            silence_timeout=2.0,
+            silence_timeout=SILENCE_TIMEOUT,
+            quick_check_timeout=QUICK_CHECK_TIMEOUT,
             on_speech_start=_on_speech_start,
             on_speech_end=_on_speech_end,
+            on_quick_check=_on_quick_check,
         )
-
-    if _transcriber is None:
-        _transcriber = WhisperTranscriber()
 
 
 @mcp.tool()
@@ -201,10 +249,14 @@ def listening_status() -> str:
     status_parts = [
         f"Listening: {'Yes' if _is_listening else 'No'}",
         f"Speaking (TTS): {'Yes' if coordinator.is_speaking else 'No'}",
+        f"Transcriber: {_transcriber.name if _transcriber else 'None'}",
+        f"Silence timeout: {SILENCE_TIMEOUT}s",
+        f"Quick check timeout: {QUICK_CHECK_TIMEOUT}s",
     ]
 
     if _vad:
         status_parts.append(f"Speech detected: {'Yes' if _vad.is_speaking else 'No'}")
+        status_parts.append(f"Trigger words: {', '.join(DEFAULT_TRIGGER_WORDS[:5])}...")
 
     if _last_transcription:
         preview = _last_transcription.text[:50]

@@ -12,4 +12,7 @@ torch
 torchaudio
 
 # Speech-to-Text (for claude-listen)
-faster-whisper
+# Choose one: parakeet-mlx (faster on Apple Silicon) or faster-whisper
+parakeet-mlx  # Recommended for Apple Silicon - much faster
+faster-whisper  # Fallback for non-Apple hardware
+soundfile  # Required for Parakeet audio handling

@@ -5,18 +5,13 @@ Uses faster-whisper for efficient speech-to-text.
 
 import numpy as np
 from pathlib import Path
-from typing import Optional, NamedTuple
+from typing import Optional
 import os
 
-
-class TranscriptionResult(NamedTuple):
-    """Result of a transcription."""
-    text: str
-    language: str
-    confidence: float
+from .transcriber_base import BaseTranscriber, TranscriptionResult
 
 
-class WhisperTranscriber:
+class WhisperTranscriber(BaseTranscriber):
     """
     Speech-to-text transcription using Whisper (via faster-whisper).
 
@@ -153,6 +148,48 @@ class WhisperTranscriber:
             language=info.language,
             confidence=info.language_probability,
         )
+
+    def transcribe_streaming(
+        self,
+        audio: np.ndarray,
+        language: Optional[str] = None,
+    ) -> TranscriptionResult:
+        """
+        Fast streaming transcription for keyword detection.
+        Uses smaller beam size for speed.
+        """
+        if len(audio) == 0:
+            return TranscriptionResult(text="", language="", confidence=0.0)
+
+        if audio.dtype != np.float32:
+            audio = audio.astype(np.float32)
+
+        if np.abs(audio).max() > 1.0:
+            audio = audio / np.abs(audio).max()
+
+        # Use smaller beam size for faster results
+        segments, info = self._model.transcribe(
+            audio,
+            language=language,
+            beam_size=1,  # Faster but less accurate
+            vad_filter=False,  # Skip VAD for speed
+        )
+
+        text_parts = [segment.text.strip() for segment in segments]
+
+        return TranscriptionResult(
+            text=" ".join(text_parts).strip(),
+            language=info.language,
+            confidence=info.language_probability,
+        )
+
+    @property
+    def name(self) -> str:
+        return "whisper"
+
+    @property
+    def supports_streaming(self) -> bool:
+        return True
 
 
 # Singleton instance
