@@ -44,7 +44,7 @@ class SileroVAD:
         speech_threshold: float = 0.5,  # Probability threshold
         on_speech_start: Optional[Callable[[], None]] = None,
         on_speech_end: Optional[Callable[[], None]] = None,
-        min_speech_frames: int = 2,  # Ported from Bun
+        min_speech_frames: int = 1,  # Reduced for more sensitivity
         use_coreml: bool = True,
     ):
         """

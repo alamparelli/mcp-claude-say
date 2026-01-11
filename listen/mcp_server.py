@@ -25,7 +25,7 @@ mcp = FastMCP("claude-listen")
 # Configuration via environment variables
 TRANSCRIBER_TYPE = os.environ.get("CLAUDE_LISTEN_TRANSCRIBER", "auto")  # auto, whisper, parakeet
 SILENCE_TIMEOUT = float(os.environ.get("CLAUDE_LISTEN_SILENCE_TIMEOUT", "1.5"))  # Ported from Bun: 1500ms
-SPEECH_THRESHOLD = float(os.environ.get("CLAUDE_LISTEN_SPEECH_THRESHOLD", "0.5"))  # Silero probability threshold
+SPEECH_THRESHOLD = float(os.environ.get("CLAUDE_LISTEN_SPEECH_THRESHOLD", "0.3"))  # Silero probability threshold (lower = more sensitive)
 USE_COREML = os.environ.get("CLAUDE_LISTEN_USE_COREML", "true").lower() == "true"
 
 # Global state
