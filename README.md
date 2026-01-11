@@ -13,7 +13,7 @@ Text-to-Speech MCP server for Claude Code on macOS. Claude speaks its responses 
 ## One-Line Installation
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/mcp-claude-say.git && cd mcp-claude-say && ./install.sh
+git clone https://github.com/alamparelli/mcp-claude-say.git && cd mcp-claude-say && ./install.sh
 ```
 
 Or if you've already cloned the repo:
@@ -71,8 +71,8 @@ If the installer couldn't configure Claude Code automatically, add this to `~/.c
 {
   "mcpServers": {
     "claude-say": {
-      "command": "/Users/YOU/.mcp-claude-say/venv/bin/python",
-      "args": ["/Users/YOU/.mcp-claude-say/mcp_server.py"]
+      "command": "/Users/YOUR_USERNAME/.mcp-claude-say/venv/bin/python",
+      "args": ["/Users/YOUR_USERNAME/.mcp-claude-say/mcp_server.py"]
     }
   }
 }

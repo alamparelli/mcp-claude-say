@@ -17,7 +17,7 @@ NC='\033[0m' # No Color
 INSTALL_DIR="$HOME/.mcp-claude-say"
 SKILL_DIR="$HOME/.claude/skills/speak"
 CLAUDE_SETTINGS="$HOME/.claude/settings.json"
-REPO_URL="https://github.com/YOUR_USERNAME/mcp-claude-say.git"
+REPO_URL="https://github.com/alamparelli/mcp-claude-say.git"
 
 echo -e "${BLUE}╔════════════════════════════════════════╗${NC}"
 echo -e "${BLUE}║     mcp-claude-say Installer           ║${NC}"
