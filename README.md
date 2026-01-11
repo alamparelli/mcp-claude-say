@@ -1,13 +1,15 @@
 # mcp-claude-say
 
-Text-to-Speech MCP server for Claude Code on macOS. Claude speaks its responses using the native `say` command.
+> **macOS only** - Uses native macOS speech synthesis
+
+Text-to-Speech MCP server for Claude Code. Claude speaks its responses aloud using the native macOS `say` command.
 
 ## Features
 
 - **Voice responses** - Claude speaks key information aloud
 - **Three expressive modes** - Brief, brainstorming, and complete
 - **Queue management** - Multiple messages are queued and spoken sequentially
-- **Multilingual** - Speaks in the user's language (French, English, etc.)
+- **Multilingual** - Speaks in the user's language
 - **Lightweight** - Uses native macOS speech synthesis, no external APIs
 
 ## One-Line Installation
@@ -37,14 +39,14 @@ After installation, restart Claude Code and:
 /speak
 ```
 
-Or simply say "speak", "parle", or "voice mode" in your conversation.
+Or simply say "speak", "voice mode", or "talk to me" in your conversation.
 
 ### Voice Commands
 
 | Command | Action |
 |---------|--------|
 | `/speak` | Activate voice mode |
-| `stop` / `tais-toi` | Stop speaking immediately |
+| `stop` / `silence` | Stop speaking immediately |
 | `skip` / `next` | Skip to next message |
 | `vocal off` | Disable voice mode |
 
@@ -52,9 +54,9 @@ Or simply say "speak", "parle", or "voice mode" in your conversation.
 
 | Mode | Activation | Style |
 |------|------------|-------|
-| **Brief** (default) | "brief mode" / "mode bref" | 1-3 sentences, direct |
+| **Brief** (default) | "brief mode" | 1-3 sentences, direct |
 | **Brainstorming** | "brainstorming mode" | Creative, exploratory, questions |
-| **Complete** | "complete mode" / "mode complet" | Detailed, structured, pedagogical |
+| **Complete** | "complete mode" | Detailed, structured, pedagogical |
 
 ## Requirements
 

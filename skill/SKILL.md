@@ -1,6 +1,6 @@
 ---
 name: speak
-description: "TTS Voice Mode - Claude speaks responses via macOS speech synthesis. Use this skill when user says: 'speak', 'talk to me', 'voice mode', 'vocal on', 'read aloud', 'parle', 'parle-moi', 'mode vocal', or asks Claude to vocalize responses. Disable with 'stop', 'silence', 'vocal off', 'tais-toi'."
+description: "TTS Voice Mode - Claude speaks responses via macOS speech synthesis. Use this skill when user says: 'speak', 'talk to me', 'voice mode', 'vocal on', 'read aloud', or asks Claude to vocalize responses. Disable with 'stop', 'silence', 'vocal off'."
 user_invocable: true
 ---
 
@@ -23,7 +23,7 @@ You now have access to text-to-speech via the `claude-say` MCP server.
 The skill supports three voice communication modes:
 
 ### "brief" Mode (default)
-- **Activation**: active by default, or "brief mode" / "be brief" / "short" / "mode bref" / "sois bref"
+- **Activation**: active by default, or "brief mode" / "be brief" / "short"
 - **Style**: Direct, essential, factual
 - **Rules**:
   - 1-3 sentences max per speak() call
@@ -32,7 +32,7 @@ The skill supports three voice communication modes:
 - **Speed**: 1.1
 
 ### "brainstorming" Mode
-- **Activation**: "brainstorming mode" / "brainstorm" / "explore ideas" / "let's think together" / "mode brainstorming" / "réfléchissons ensemble"
+- **Activation**: "brainstorming mode" / "brainstorm" / "explore ideas" / "let's think together"
 - **Style**: Creative, exploratory, open
 - **Rules**:
   - Propose multiple ideas and paths
@@ -44,7 +44,7 @@ The skill supports three voice communication modes:
 - **Deactivation**: "brief mode" / "stop brainstorming" / "ok that's good"
 
 ### "complete" Mode
-- **Activation**: "complete mode" / "explain in detail" / "elaborate" / "be thorough" / "mode complet" / "explique en détail" / "développe"
+- **Activation**: "complete mode" / "explain in detail" / "elaborate" / "be thorough"
 - **Style**: Detailed, structured, pedagogical
 - **Rules**:
   - Cover the topic in depth
@@ -64,18 +64,13 @@ The skill supports three voice communication modes:
    - Logs and technical outputs
    - File paths
    - Long lists (summarize them instead)
-3. **ALWAYS speak in the user's language** - detect the language the user is using and respond vocally in that same language
+3. **Match the user's language** - detect the language the user is using and respond vocally in that same language
 
 ## Examples
 
-### Brief mode - Confirm an action (English)
+### Brief mode - Confirm an action
 ```
 speak("I've successfully modified the file.")
-```
-
-### Brief mode - Confirm an action (French)
-```
-speak("J'ai modifié le fichier avec succès.")
 ```
 
 ### Brief mode - Summarize a result
@@ -111,12 +106,12 @@ speak("The Controller bridges the two. It receives user actions, calls the Model
 
 ## User Commands
 
-- **"stop"** / **"tais-toi"** / **"silence"**: Call `stop_speaking()` immediately
-- **"skip"** / **"next"** / **"suivant"**: Call `skip()`
+- **"stop"** / **"silence"**: Call `stop_speaking()` immediately
+- **"skip"** / **"next"**: Call `skip()`
 - **"vocal off"** / **"voice off"**: Disable voice mode (stop using speak)
-- **"brainstorming mode"** / **"mode brainstorming"**: Activate brainstorming mode
-- **"complete mode"** / **"mode complet"**: Activate complete/detailed mode
-- **"brief mode"** / **"mode bref"**: Return to brief mode (default)
+- **"brainstorming mode"**: Activate brainstorming mode
+- **"complete mode"**: Activate complete/detailed mode
+- **"brief mode"**: Return to brief mode (default)
 
 ## Default Parameters
 
