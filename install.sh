@@ -21,7 +21,7 @@ NC='\033[0m' # No Color
 INSTALL_DIR="$HOME/.mcp-claude-say"
 SKILL_DIR="$HOME/.claude/skills/speak"
 SKILL_CONVERSATION_DIR="$HOME/.claude/skills/conversation"
-CLAUDE_SETTINGS="$HOME/.claude/settings.json"
+CLAUDE_SETTINGS="$HOME/.claude.json"
 REPO_URL="https://github.com/alamparelli/mcp-claude-say.git"
 MODELS_DIR="$HOME/models"
 WHISPER_MODEL="ggml-large-v3-turbo.bin"
@@ -130,13 +130,17 @@ if command -v jq &> /dev/null; then
     TEMP_FILE=$(mktemp)
     jq --arg dir "$INSTALL_DIR" '
         .mcpServers["claude-say"] = {
+            "type": "stdio",
             "command": ($dir + "/venv/bin/python"),
-            "args": [($dir + "/mcp_server.py")]
+            "args": [($dir + "/mcp_server.py")],
+            "env": {}
         } |
         .mcpServers["claude-listen"] = {
+            "type": "stdio",
             "command": ($dir + "/venv/bin/python"),
             "args": ["-m", "listen.mcp_server"],
-            "cwd": $dir
+            "cwd": $dir,
+            "env": {}
         }
     ' "$CLAUDE_SETTINGS" > "$TEMP_FILE" && mv "$TEMP_FILE" "$CLAUDE_SETTINGS"
 else
