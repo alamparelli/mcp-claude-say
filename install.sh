@@ -3,6 +3,10 @@
 # mcp-claude-say installer
 # One-line install: curl -sSL https://raw.githubusercontent.com/USER/mcp-claude-say/main/install.sh | bash
 #
+# Includes:
+# - claude-say (TTS) - Text-to-Speech
+# - claude-listen (STT) - Speech-to-Text with Whisper
+#
 
 set -e
 
@@ -16,12 +20,15 @@ NC='\033[0m' # No Color
 # Configuration
 INSTALL_DIR="$HOME/.mcp-claude-say"
 SKILL_DIR="$HOME/.claude/skills/speak"
+SKILL_CONVERSATION_DIR="$HOME/.claude/skills/conversation"
 CLAUDE_SETTINGS="$HOME/.claude/settings.json"
 REPO_URL="https://github.com/alamparelli/mcp-claude-say.git"
+MODELS_DIR="$HOME/models"
+WHISPER_MODEL="ggml-large-v3-turbo.bin"
 
 echo -e "${BLUE}╔════════════════════════════════════════╗${NC}"
 echo -e "${BLUE}║     mcp-claude-say Installer           ║${NC}"
-echo -e "${BLUE}║     TTS for Claude Code (macOS)        ║${NC}"
+echo -e "${BLUE}║     TTS + STT for Claude Code (macOS)  ║${NC}"
 echo -e "${BLUE}╚════════════════════════════════════════╝${NC}"
 echo ""
 
@@ -43,7 +50,7 @@ if ! command -v python3 &> /dev/null; then
     exit 1
 fi
 
-echo -e "${GREEN}[1/5]${NC} Creating installation directory..."
+echo -e "${GREEN}[1/7]${NC} Creating installation directory..."
 
 # Determine source directory (local or need to clone)
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -71,9 +78,17 @@ if [[ "$SOURCE_DIR" != "$INSTALL_DIR" ]]; then
     mkdir -p "$INSTALL_DIR"
     cp "$SOURCE_DIR/mcp_server.py" "$INSTALL_DIR/"
     cp "$SOURCE_DIR/requirements.txt" "$INSTALL_DIR/"
+    # Copy listen module
+    if [[ -d "$SOURCE_DIR/listen" ]]; then
+        cp -r "$SOURCE_DIR/listen" "$INSTALL_DIR/"
+    fi
+    # Copy shared module
+    if [[ -d "$SOURCE_DIR/shared" ]]; then
+        cp -r "$SOURCE_DIR/shared" "$INSTALL_DIR/"
+    fi
 fi
 
-echo -e "${GREEN}[2/5]${NC} Setting up Python virtual environment..."
+echo -e "${GREEN}[2/7]${NC} Setting up Python virtual environment..."
 
 cd "$INSTALL_DIR"
 python3 -m venv venv
@@ -81,16 +96,27 @@ source venv/bin/activate
 pip install --quiet --upgrade pip
 pip install --quiet -r requirements.txt
 
-echo -e "${GREEN}[3/5]${NC} Installing Claude Code skill..."
+echo -e "${GREEN}[3/7]${NC} Installing Claude Code skills..."
 
+# Install speak skill
 mkdir -p "$SKILL_DIR"
 if [[ -f "$SOURCE_DIR/skill/SKILL.md" ]]; then
     cp "$SOURCE_DIR/skill/SKILL.md" "$SKILL_DIR/"
+    echo -e "       ${GREEN}Installed /speak skill${NC}"
 else
-    echo -e "${YELLOW}       Warning: SKILL.md not found, skipping skill installation${NC}"
+    echo -e "${YELLOW}       Warning: speak SKILL.md not found${NC}"
 fi
 
-echo -e "${GREEN}[4/5]${NC} Configuring Claude Code MCP server..."
+# Install conversation skill
+mkdir -p "$SKILL_CONVERSATION_DIR"
+if [[ -f "$SOURCE_DIR/skill/conversation/SKILL.md" ]]; then
+    cp "$SOURCE_DIR/skill/conversation/SKILL.md" "$SKILL_CONVERSATION_DIR/"
+    echo -e "       ${GREEN}Installed /conversation skill${NC}"
+else
+    echo -e "${YELLOW}       Warning: conversation SKILL.md not found${NC}"
+fi
+
+echo -e "${GREEN}[4/7]${NC} Configuring Claude Code MCP servers..."
 
 # Create settings.json if it doesn't exist
 mkdir -p "$(dirname "$CLAUDE_SETTINGS")"
@@ -100,12 +126,19 @@ fi
 
 # Check if jq is available
 if command -v jq &> /dev/null; then
-    # Use jq to safely modify JSON
+    # Use jq to safely modify JSON - add both claude-say and claude-listen
     TEMP_FILE=$(mktemp)
-    jq --arg dir "$INSTALL_DIR" '.mcpServers["claude-say"] = {
-        "command": ($dir + "/venv/bin/python"),
-        "args": [($dir + "/mcp_server.py")]
-    }' "$CLAUDE_SETTINGS" > "$TEMP_FILE" && mv "$TEMP_FILE" "$CLAUDE_SETTINGS"
+    jq --arg dir "$INSTALL_DIR" '
+        .mcpServers["claude-say"] = {
+            "command": ($dir + "/venv/bin/python"),
+            "args": [($dir + "/mcp_server.py")]
+        } |
+        .mcpServers["claude-listen"] = {
+            "command": ($dir + "/venv/bin/python"),
+            "args": ["-m", "listen.mcp_server"],
+            "cwd": $dir
+        }
+    ' "$CLAUDE_SETTINGS" > "$TEMP_FILE" && mv "$TEMP_FILE" "$CLAUDE_SETTINGS"
 else
     echo -e "${YELLOW}       Warning: jq not installed, please manually add MCP config${NC}"
     echo -e "${YELLOW}       Install jq with: brew install jq${NC}"
@@ -115,11 +148,37 @@ else
     echo -e "         \"claude-say\": {"
     echo -e "           \"command\": \"$INSTALL_DIR/venv/bin/python\","
     echo -e "           \"args\": [\"$INSTALL_DIR/mcp_server.py\"]"
+    echo -e "         },"
+    echo -e "         \"claude-listen\": {"
+    echo -e "           \"command\": \"$INSTALL_DIR/venv/bin/python\","
+    echo -e "           \"args\": [\"-m\", \"listen.mcp_server\"],"
+    echo -e "           \"cwd\": \"$INSTALL_DIR\""
     echo -e "         }"
     echo -e "       }${NC}"
 fi
 
-echo -e "${GREEN}[5/5]${NC} Testing installation..."
+echo -e "${GREEN}[5/7]${NC} Downloading Whisper model (if needed)..."
+
+mkdir -p "$MODELS_DIR"
+if [[ -f "$MODELS_DIR/$WHISPER_MODEL" ]]; then
+    echo -e "       ${GREEN}Whisper model already exists${NC}"
+else
+    echo -e "       Downloading large-v3-turbo (~1.5GB)..."
+    curl -L -o "$MODELS_DIR/$WHISPER_MODEL" \
+        "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/$WHISPER_MODEL" || {
+        echo -e "${YELLOW}       Warning: Failed to download Whisper model${NC}"
+        echo -e "${YELLOW}       You can download it manually later${NC}"
+    }
+fi
+
+echo -e "${GREEN}[6/7]${NC} Pre-loading Silero VAD model..."
+"$INSTALL_DIR/venv/bin/python" -c "import torch; torch.hub.load('snakers4/silero-vad', 'silero_vad', force_reload=False)" 2>/dev/null && {
+    echo -e "       ${GREEN}Silero VAD ready${NC}"
+} || {
+    echo -e "${YELLOW}       Warning: Silero VAD will download on first use${NC}"
+}
+
+echo -e "${GREEN}[7/7]${NC} Testing installation..."
 
 # Quick test
 "$INSTALL_DIR/venv/bin/python" -c "from mcp.server.fastmcp import FastMCP; print('MCP module OK')" 2>/dev/null && {
@@ -134,21 +193,34 @@ say -v "?" | head -1 > /dev/null 2>&1 && {
     echo -e "       ${GREEN}macOS speech synthesis ready${NC}"
 }
 
+# Test STT dependencies
+"$INSTALL_DIR/venv/bin/python" -c "import sounddevice; import torch; from faster_whisper import WhisperModel" 2>/dev/null && {
+    echo -e "       ${GREEN}STT dependencies ready${NC}"
+} || {
+    echo -e "${YELLOW}       Warning: Some STT dependencies may need manual installation${NC}"
+}
+
 echo ""
 echo -e "${GREEN}╔════════════════════════════════════════╗${NC}"
 echo -e "${GREEN}║     Installation complete!             ║${NC}"
 echo -e "${GREEN}╚════════════════════════════════════════╝${NC}"
 echo ""
 echo -e "Installed to: ${BLUE}$INSTALL_DIR${NC}"
-echo -e "Skill at:     ${BLUE}$SKILL_DIR${NC}"
+echo -e "Skills at:    ${BLUE}$SKILL_DIR${NC}"
+echo -e "              ${BLUE}$SKILL_CONVERSATION_DIR${NC}"
+echo ""
+echo -e "${YELLOW}MCP Servers installed:${NC}"
+echo -e "  • ${GREEN}claude-say${NC}    - Text-to-Speech (TTS)"
+echo -e "  • ${GREEN}claude-listen${NC} - Speech-to-Text (STT)"
 echo ""
 echo -e "${YELLOW}Usage:${NC}"
 echo -e "  1. Restart Claude Code (or start a new session)"
-echo -e "  2. Type ${BLUE}/speak${NC} to activate voice mode"
-echo -e "  3. Or just say ${BLUE}\"speak\"${NC} or ${BLUE}\"voice mode\"${NC}"
+echo -e "  2. Type ${BLUE}/speak${NC} to activate voice mode (TTS only)"
+echo -e "  3. Type ${BLUE}/conversation${NC} for full voice loop (TTS + STT)"
 echo ""
-echo -e "${YELLOW}Commands:${NC}"
+echo -e "${YELLOW}Voice Commands:${NC}"
 echo -e "  • \"stop\" / \"silence\"      - Stop speaking"
+echo -e "  • \"fin de session\"        - End conversation mode"
 echo -e "  • \"brainstorming mode\"    - Creative mode"
 echo -e "  • \"complete mode\"         - Detailed explanations"
 echo -e "  • \"brief mode\"            - Brief responses (default)"

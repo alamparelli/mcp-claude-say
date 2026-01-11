@@ -1,1 +1,15 @@
+# Claude-Say & Claude-Listen Dependencies
+
+# MCP Framework
 mcp>=1.0.0
+
+# Audio capture (for claude-listen)
+sounddevice
+numpy
+
+# VAD - Voice Activity Detection (for claude-listen)
+torch
+torchaudio
+
+# Speech-to-Text (for claude-listen)
+faster-whisper
