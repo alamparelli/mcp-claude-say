@@ -1,13 +1,13 @@
 """
 Claude-Listen - Speech-to-Text module for Claude Code
-Uses Parakeet-MLX for fast transcription and WebRTC VAD for lightweight voice detection.
+Simple PTT mode with Parakeet-MLX transcription.
 """
 
 __all__ = [
     "audio",
-    "vad_light",
-    "transcriber",
     "transcriber_base",
     "parakeet_transcriber",
+    "simple_ptt",
+    "ptt_controller",
     "mcp_server",
 ]

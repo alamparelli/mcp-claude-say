@@ -64,13 +64,30 @@ def check_stop_signal() -> bool:
     return False
 
 
+# Cache for is_speaking() to avoid spawning subprocess on every audio chunk
+_is_speaking_cache = {"value": False, "timestamp": 0.0}
+_IS_SPEAKING_CACHE_TTL = 0.3  # Check every 300ms
+
+
 def is_speaking() -> bool:
     """
     Check if claude-say is currently speaking.
 
+    Uses caching to avoid spawning a subprocess on every audio chunk.
+    The cache is refreshed every 300ms.
+
     Returns:
         True if TTS is active
     """
+    import time
+
+    now = time.time()
+
+    # Return cached value if still valid
+    if now - _is_speaking_cache["timestamp"] < _IS_SPEAKING_CACHE_TTL:
+        return _is_speaking_cache["value"]
+
+    # Refresh cache
     try:
         # Check if macOS 'say' process is running
         result = subprocess.run(
@@ -78,8 +95,13 @@ def is_speaking() -> bool:
             capture_output=True,
             text=True
         )
-        return result.returncode == 0
+        is_active = result.returncode == 0
+        _is_speaking_cache["value"] = is_active
+        _is_speaking_cache["timestamp"] = now
+        return is_active
     except Exception:
+        _is_speaking_cache["value"] = False
+        _is_speaking_cache["timestamp"] = now
         return False
 
 

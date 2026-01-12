@@ -7,6 +7,7 @@ Provides queue management and speech control for Claude Code.
 
 import subprocess
 import threading
+import os
 from queue import Queue, Empty
 from mcp.server.fastmcp import FastMCP
 
@@ -17,6 +18,29 @@ speech_queue: Queue = Queue()
 current_process: subprocess.Popen | None = None
 process_lock = threading.Lock()
 worker_thread: threading.Thread | None = None
+
+# Ready notification sound (macOS system sound)
+READY_SOUND = "/System/Library/Sounds/Pop.aiff"
+
+def play_ready_sound():
+    """Play a short notification sound to indicate ready to listen."""
+    if os.path.exists(READY_SOUND):
+        subprocess.Popen(
+            ["afplay", READY_SOUND],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL
+        )
+
+def clear_listen_segments():
+    """Clear segments from claude-listen to avoid feedback loop."""
+    import shutil
+    segment_dir = "/tmp/claude-segments"
+    if os.path.exists(segment_dir):
+        for f in os.listdir(segment_dir):
+            try:
+                os.remove(os.path.join(segment_dir, f))
+            except:
+                pass
 
 
 def speech_worker():
@@ -67,31 +91,6 @@ TRAILING_SILENCE_MS = 300
 
 
 @mcp.tool()
-def speak(text: str, voice: str | None = None, speed: float = 1.1) -> str:
-    """
-    Add text to the speech synthesis queue.
-
-    Args:
-        text: The text to speak
-        voice: Voice to use (None = default Siri/system voice)
-        speed: Speech speed (0.5 = slow, 1.0 = normal, 1.1 = default, 2.0 = fast)
-
-    Returns:
-        Confirmation that text was added to queue
-    """
-    ensure_worker_running()
-    rate = int(speed * 175)  # 175 words/min = normal speed
-
-    # Add trailing silence so the last word is fully heard
-    # macOS say command supports [[slnc N]] where N is silence in milliseconds
-    text_with_silence = f"{text} [[slnc {TRAILING_SILENCE_MS}]]"
-
-    speech_queue.put((text_with_silence, voice, rate))
-    preview = text[:50] + "..." if len(text) > 50 else text
-    return f"Added to queue: {preview}"
-
-
-@mcp.tool()
 def speak_and_wait(text: str, voice: str | None = None, speed: float = 1.1) -> str:
     """
     Speak text and wait until speech is finished before returning.
@@ -115,6 +114,12 @@ def speak_and_wait(text: str, voice: str | None = None, speed: float = 1.1) -> s
 
     # Wait for the queue to be processed
     speech_queue.join()
+
+    # Clear any segments recorded during TTS (feedback loop prevention)
+    clear_listen_segments()
+
+    # Play ready sound to indicate listening is active
+    play_ready_sound()
 
     return "Speech completed"
 
@@ -146,69 +151,6 @@ def stop_speaking() -> str:
             return f"Stopped. {items_cleared} message(s) cleared from queue."
 
     return f"Nothing playing. {items_cleared} message(s) cleared from queue."
-
-
-@mcp.tool()
-def skip() -> str:
-    """
-    Skip to the next message in queue (stops current message).
-
-    Returns:
-        Confirmation of skip
-    """
-    global current_process
-
-    with process_lock:
-        if current_process and current_process.poll() is None:
-            current_process.terminate()
-            return "Current message skipped, moving to next."
-
-    return "No message currently playing."
-
-
-@mcp.tool()
-def list_voices() -> str:
-    """
-    List available voices on the system.
-
-    Returns:
-        List of installed voices
-    """
-    result = subprocess.run(
-        ["/usr/bin/say", "-v", "?"],
-        capture_output=True,
-        text=True
-    )
-
-    # Parse and format voices
-    voices = []
-    for line in result.stdout.strip().split("\n")[:20]:  # Limit to 20
-        parts = line.split()
-        if parts:
-            voice_name = parts[0]
-            lang = parts[1] if len(parts) > 1 else ""
-            voices.append(f"- {voice_name} ({lang})")
-
-    return "Available voices:\n" + "\n".join(voices)
-
-
-@mcp.tool()
-def queue_status() -> str:
-    """
-    Get the current speech queue status.
-
-    Returns:
-        Number of pending messages and current state
-    """
-    global current_process
-
-    queue_size = speech_queue.qsize()
-
-    with process_lock:
-        is_speaking = current_process is not None and current_process.poll() is None
-
-    status = "Speaking" if is_speaking else "Silent"
-    return f"Status: {status}\nMessages in queue: {queue_size}"
 
 
 if __name__ == "__main__":

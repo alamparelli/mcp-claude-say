@@ -8,9 +8,8 @@ sounddevice
 numpy
 soundfile
 
-# VAD - Voice Activity Detection (Silero via ONNX)
-# onnxruntime v1.23+ includes CoreML EP for Apple Silicon Neural Engine
-onnxruntime>=1.23.0
+# Speech-to-Text (Parakeet-MLX - fast STT for Apple Silicon)
+parakeet-mlx
 
-# Speech-to-Text (for claude-listen)
-parakeet-mlx  # Fast STT for Apple Silicon via MLX
+# Global hotkey detection (for push-to-talk)
+pynput
