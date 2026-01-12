@@ -13,12 +13,21 @@ Uses **simple Push-to-Talk (PTT)** mode:
 ## Available MCP Tools
 
 ### claude-listen (STT - Push-to-Talk)
+
+**Synchronous mode (blocking):**
 | Tool | Description |
 |------|-------------|
 | `start_ptt_mode(key?)` | Start PTT mode (default: Left Cmd + S) |
 | `stop_ptt_mode()` | Stop PTT mode |
 | `get_ptt_status()` | Get PTT state |
-| `get_segment_transcription(wait?, timeout?)` | Get transcription |
+| `get_segment_transcription(wait?, timeout?)` | Get transcription (blocks) |
+
+**Background mode (non-blocking) - RECOMMENDED:**
+| Tool | Description |
+|------|-------------|
+| `start_ptt_background(key?)` | Start PTT in background process |
+| `check_transcription()` | Check for new transcription (non-blocking) |
+| `stop_ptt_background()` | Stop background PTT |
 
 ### claude-say (TTS)
 | Tool | Description |
@@ -100,6 +109,57 @@ When user says **"fin de session"** (or similar):
 stop_ptt_mode()
 speak_and_wait("Fin de la session vocale. À bientôt!")
 ```
+
+## Background Mode (Non-Blocking) - RECOMMENDED
+
+Background mode avoids blocking Claude while waiting for transcriptions.
+PTT runs in a separate process and writes to a file.
+
+### Starting Background Mode
+
+```python
+# 1. Start background PTT
+start_ptt_background()  # Returns immediately
+
+# 2. Confirm vocally
+speak_and_wait("Mode conversation activé. Appuie sur Commande gauche S pour parler.")
+
+# 3. Poll for transcriptions (non-blocking)
+result = check_transcription()
+# Returns: transcription text, or status like "[Ready...]", "[Recording...]"
+```
+
+### Background Conversation Loop
+
+```python
+import time
+
+while True:
+    # Non-blocking check
+    result = check_transcription()
+
+    # Check if it's actual transcription (not status message)
+    if not result.startswith("["):
+        # Got real transcription!
+        if "fin de session" in result.lower():
+            break
+
+        # Respond
+        speak_and_wait(f"Tu as dit: {result}")
+
+    # Small delay before next check
+    time.sleep(0.5)
+
+# End session
+stop_ptt_background()
+speak_and_wait("Fin de la session vocale.")
+```
+
+### Advantages of Background Mode
+
+- **Non-blocking**: Claude isn't frozen waiting for speech
+- **Responsive**: Can do other things while waiting
+- **Stable**: No long-running tool calls that might timeout
 
 ## Important Rules
 
