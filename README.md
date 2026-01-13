@@ -1,16 +1,17 @@
 # mcp-claude-say
 
-> **macOS only** - Uses native macOS speech synthesis
+> **macOS only** - Uses native macOS speech synthesis and Parakeet MLX for STT
 
-Text-to-Speech MCP server for Claude Code. Claude speaks its responses aloud using the native macOS `say` command.
+Voice interaction MCP servers for Claude Code. Includes both Text-to-Speech (TTS) and Speech-to-Text (STT) for a complete voice conversation experience.
 
 ## Features
 
-- **Voice responses** - Claude speaks key information aloud
-- **Three expressive modes** - Brief, brainstorming, and complete
-- **Queue management** - Multiple messages are queued and spoken sequentially
-- **Multilingual** - Speaks in the user's language
-- **Lightweight** - Uses native macOS speech synthesis, no external APIs
+- **Voice responses** - Claude speaks its responses aloud
+- **Voice input** - Talk to Claude using Push-to-Talk (PTT)
+- **Full conversation mode** - Complete voice loop with `/conversation`
+- **Fast local STT** - Uses Parakeet MLX (optimized for Apple Silicon)
+- **Multilingual** - Speaks and understands multiple languages
+- **Lightweight** - Uses native macOS speech synthesis, no external APIs for TTS
 
 ## One-Line Installation
 
@@ -26,96 +27,98 @@ Or if you've already cloned the repo:
 
 ### What the installer does
 
-1. Creates a Python virtual environment in `~/.mcp-claude-say/`
-2. Installs the MCP dependency
-3. Copies the skill to `~/.claude/skills/speak/`
-4. Configures the MCP server in `~/.claude/settings.json`
+1. Creates a Python virtual environment
+2. Installs dependencies (MCP, Parakeet MLX, sounddevice, pynput)
+3. Installs two skills: `/speak` and `/conversation`
+4. Configures both MCP servers in Claude Code settings
 
 ## Usage
 
-After installation, restart Claude Code and:
+After installation, restart Claude Code.
+
+### Voice Mode (TTS only)
 
 ```
 /speak
 ```
 
-Or simply say "speak", "voice mode", or "talk to me" in your conversation.
+Claude will speak its responses aloud.
 
-### Voice Commands
+### Conversation Mode (TTS + STT)
 
-| Command | Action |
-|---------|--------|
-| `/speak` | Activate voice mode |
-| `stop` / `silence` | Stop speaking immediately |
-| `skip` / `next` | Skip to next message |
-| `vocal off` | Disable voice mode |
+```
+/conversation
+```
 
-### Expressive Modes
+Full voice loop:
+1. Press **Left Cmd + S** to start recording
+2. Speak your message
+3. Press **Left Cmd + S** again to stop
+4. Claude transcribes and responds vocally
+5. Repeat!
 
-| Mode | Activation | Style |
-|------|------------|-------|
-| **Brief** (default) | "brief mode" | 1-3 sentences, direct |
-| **Brainstorming** | "brainstorming mode" | Creative, exploratory, questions |
-| **Complete** | "complete mode" | Detailed, structured, pedagogical |
+Say **"fin de session"** to end the conversation.
+
+## Push-to-Talk Keys
+
+| Key | Description |
+|-----|-------------|
+| `cmd_l+s` | Left Command + S (default) |
+| `cmd_r+m` | Right Command + M |
+| `alt_l`, `alt_r` | Option keys |
+| `f13`, `f14`, `f15` | Function keys |
 
 ## Requirements
 
-- **macOS** (uses native `say` command)
+- **macOS** (uses native `say` command + Parakeet MLX)
+- **Apple Silicon** recommended (M1/M2/M3/M4) for fast STT
 - **Python 3.9+**
 - **Claude Code** CLI
-- **jq** (optional, for automatic config) - `brew install jq`
 
-## Manual Configuration
+## MCP Servers
 
-If the installer couldn't configure Claude Code automatically, add this to `~/.claude/settings.json`:
+The installer configures two MCP servers:
 
-```json
-{
-  "mcpServers": {
-    "claude-say": {
-      "command": "/Users/YOUR_USERNAME/.mcp-claude-say/venv/bin/python",
-      "args": ["/Users/YOUR_USERNAME/.mcp-claude-say/mcp_server.py"]
-    }
-  }
-}
-```
-
-## MCP Tools
-
-The server exposes these tools:
+### claude-say (TTS)
 
 | Tool | Description |
 |------|-------------|
-| `speak(text, voice?, speed?)` | Add text to speech queue |
+| `speak(text, voice?, speed?)` | Queue text to speak |
+| `speak_and_wait(text, voice?, speed?)` | Speak and wait for completion |
 | `stop_speaking()` | Stop and clear queue |
-| `skip()` | Skip current message |
-| `list_voices()` | List available voices |
-| `queue_status()` | Get queue status |
+
+### claude-listen (STT)
+
+| Tool | Description |
+|------|-------------|
+| `start_ptt_mode(key?)` | Start Push-to-Talk mode |
+| `stop_ptt_mode()` | Stop PTT mode |
+| `get_ptt_status()` | Get current status |
+| `get_segment_transcription()` | Get transcribed text |
 
 ## File Structure
 
 ```
 ~/.mcp-claude-say/
-├── mcp_server.py      # MCP server
-├── requirements.txt   # Python dependencies
-└── venv/              # Python virtual environment
+├── mcp_server.py          # TTS server
+├── listen/                # STT module
+│   ├── mcp_server.py      # STT server
+│   ├── parakeet_transcriber.py
+│   └── ptt_controller.py
+├── shared/                # Coordination
+└── venv/                  # Python environment
 
-~/.claude/skills/speak/
-└── SKILL.md           # Claude skill definition
+~/.claude/skills/
+├── speak/                 # /speak skill
+│   └── SKILL.md
+└── conversation/          # /conversation skill
+    └── SKILL.md
 ```
 
 ## Uninstallation
 
 ```bash
 ./uninstall.sh
-```
-
-Or manually:
-
-```bash
-rm -rf ~/.mcp-claude-say
-rm -rf ~/.claude/skills/speak
-# Remove "claude-say" from mcpServers in ~/.claude/settings.json
 ```
 
 ## Troubleshooting
@@ -125,24 +128,29 @@ rm -rf ~/.claude/skills/speak
 ```bash
 # Test macOS speech
 say "Hello world"
-
-# Check MCP server
-~/.mcp-claude-say/venv/bin/python ~/.mcp-claude-say/mcp_server.py
 ```
 
-### MCP not connecting
+### STT not working
 
-1. Restart Claude Code
-2. Check `~/.claude/settings.json` has the correct paths
-3. Verify the virtual environment: `~/.mcp-claude-say/venv/bin/pip list | grep mcp`
+```bash
+# Check Parakeet MLX
+~/.mcp-claude-say/venv/bin/python -c "import parakeet_mlx; print('OK')"
 
-### Change voice
-
-Use `list_voices` in Claude to see available voices, then specify in the `speak()` call:
-
+# Check audio capture
+~/.mcp-claude-say/venv/bin/python -c "import sounddevice; print(sounddevice.query_devices())"
 ```
-speak("Hello", voice="Samantha")
-```
+
+### PTT key not detected
+
+Make sure Claude Code (or Terminal) has Accessibility permissions in System Settings > Privacy & Security > Accessibility.
+
+## Performance
+
+| Metric | Value |
+|--------|-------|
+| STT Speed | ~60x real-time (Parakeet MLX) |
+| STT RAM | ~2 GB |
+| TTS Latency | < 100ms |
 
 ## License
 
@@ -150,4 +158,4 @@ MIT
 
 ---
 
-**Enjoy your talking AI assistant!**
+**Enjoy your voice-enabled AI assistant!**

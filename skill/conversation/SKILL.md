@@ -88,8 +88,8 @@ speak_and_wait("Final part that concludes the explanation.", speed=1)  # Only th
 # 1. Start PTT mode
 start_ptt_mode()  # Uses default key: cmd_l+s
 
-# 2. Confirm vocally (use speak_and_wait since waiting for first input)
-speak_and_wait("Mode conversation activé. Appuie sur Commande gauche S pour parler.")
+# 2. Confirm vocally (short message only)
+speak_and_wait("Prêt.")
 
 # 3. Wait for transcription
 transcription = get_segment_transcription(wait=True, timeout=120)
@@ -126,7 +126,7 @@ while True:
 
 # End session
 stop_ptt_mode()
-speak_and_wait("Fin de la session vocale. À bientôt!")
+speak_and_wait("Désactivé.")
 ```
 
 ## Ending Conversation Mode
@@ -134,7 +134,7 @@ speak_and_wait("Fin de la session vocale. À bientôt!")
 When user says **"fin de session"** (or similar):
 ```python
 stop_ptt_mode()
-speak_and_wait("Fin de la session vocale. À bientôt!")
+speak_and_wait("Désactivé.")
 ```
 
 ## Background Mode (Non-Blocking) - Alternative
@@ -148,7 +148,7 @@ Background mode uses polling instead of blocking. Use this if you need Claude to
 start_ptt_background()  # Returns immediately
 
 # 2. Confirm vocally
-speak_and_wait("Mode conversation activé. Appuie sur Commande gauche S pour parler.")
+speak_and_wait("Prêt.")
 
 # 3. Poll for transcriptions (non-blocking)
 result = check_transcription()
@@ -178,7 +178,7 @@ while True:
 
 # End session
 stop_ptt_background()
-speak_and_wait("Fin de la session vocale.")
+speak_and_wait("Désactivé.")
 ```
 
 ### When to use Background Mode
@@ -195,6 +195,8 @@ speak_and_wait("Fin de la session vocale.")
 4. **Match language** - Respond in the same language as the user
 5. **Detailed responses by default** - Give thorough, complete explanations naturally. Technical topics, concepts, and questions deserve full answers. Don't artificially shorten responses.
 6. **Execute directly** - Don't announce actions, just do them and report results
+7. **Minimal activation messages** - Use ONE word only for activation ("Ready", "Prêt", etc.) and deactivation ("Disabled", "Désactivé", etc.) in the user's language
+8. **Show visual content proactively** - When explaining concepts, processes, or technical topics, don't hesitate to display diagrams, tables, code snippets, or structured lists on screen. Voice mode doesn't mean text-only - use the screen as a visual aid. If something would be clearer with a diagram or example, show it while explaining verbally.
 
 ## Error Handling
 

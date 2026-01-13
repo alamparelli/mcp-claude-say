@@ -9,6 +9,12 @@ ENV/
 env/
 .venv/
 
+# Node
+node_modules/
+npm-debug.log*
+yarn-error.log*
+bun.lockb
+
 # IDE
 .idea/
 .vscode/
@@ -26,3 +32,6 @@ logs/
 
 # Local config
 config.local.json
+
+# Temporary files
+/tmp/
