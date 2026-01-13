@@ -20,7 +20,7 @@ Uses **simple Push-to-Talk (PTT)** mode:
 | `start_ptt_mode(key?)` | Start PTT mode (default: Left Cmd + S) |
 | `stop_ptt_mode()` | Stop PTT mode |
 | `get_ptt_status()` | Get PTT state |
-| `get_segment_transcription(wait?, timeout?)` | Wait for transcription (blocks until ready) |
+| `get_segment_transcription(wait?, timeout?)` | Wait for transcription (default timeout: 120s). Returns status: [Ready], [Recording...], [Transcribing...] |
 
 **Background mode (non-blocking) - Alternative:**
 | Tool | Description |
@@ -92,7 +92,7 @@ start_ptt_mode()  # Uses default key: cmd_l+s
 speak_and_wait("Mode conversation activé. Appuie sur Commande gauche S pour parler.")
 
 # 3. Wait for transcription
-transcription = get_segment_transcription(wait=True, timeout=60)
+transcription = get_segment_transcription(wait=True, timeout=120)
 
 # 4. Process and respond (use speak() for natural flow, speak_and_wait() at the end)
 speak("Here's what I found.")
@@ -108,7 +108,7 @@ speak_and_wait("What would you like to know next?")  # Blocks before listening
 # Main loop
 while True:
     # Wait for transcription
-    text = get_segment_transcription(wait=True, timeout=60)
+    text = get_segment_transcription(wait=True, timeout=120)
 
     # Check for end command
     if "fin de session" in text.lower():

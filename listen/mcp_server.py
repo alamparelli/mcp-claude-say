@@ -42,24 +42,30 @@ _last_read_count = 0
 # State
 _transcription_ready = threading.Event()
 _last_transcription: Optional[str] = None
+_current_status: str = "ready"  # ready, recording, transcribing
 
 
 def _on_transcription_ready(text: str) -> None:
     """Callback when transcription is ready."""
-    global _last_transcription
+    global _last_transcription, _current_status
     _last_transcription = text
+    _current_status = "ready"
     _transcription_ready.set()
 
 
 def _ptt_start_recording() -> None:
     """Called when PTT key pressed - start recording."""
+    global _current_status
     signal_stop_speaking()  # Stop any TTS
+    _current_status = "recording"
     recorder = get_simple_ptt(on_transcription_ready=_on_transcription_ready)
     recorder.start()
 
 
 def _ptt_stop_recording() -> None:
     """Called when PTT key pressed again - stop and transcribe."""
+    global _current_status
+    _current_status = "transcribing"
     recorder = get_simple_ptt()
     recorder.stop()
 
@@ -97,14 +103,7 @@ def start_ptt_mode(key: str = "cmd_l+s") -> str:
         controller = create_ptt_controller(config)
         controller.start()
 
-        # Format key name nicely
-        if "+" in key:
-            parts = key.split("+")
-            key_name = parts[0].replace("_", " ").title() + " + " + parts[1].upper()
-        else:
-            key_name = key.replace("_", " ").title()
-
-        return f"PTT mode activated. Press {key_name} to toggle recording."
+        return "PTT mode activated."
 
     except Exception as e:
         return f"Error starting PTT mode: {e}"
@@ -141,19 +140,13 @@ def get_ptt_status() -> str:
     controller = get_ptt_controller()
 
     if controller is None or not controller.is_active:
-        return "PTT mode: inactive"
+        return "inactive"
 
-    state = controller.state.value
-    is_recording = controller.is_recording
-
-    recorder = get_simple_ptt()
-    recording_status = "recording" if recorder.is_recording else "waiting"
-
-    return f"PTT mode: {state}, {recording_status}"
+    return _current_status
 
 
 @mcp.tool()
-def get_segment_transcription(wait: bool = True, timeout: float = 30.0) -> str:
+def get_segment_transcription(wait: bool = True, timeout: float = 120.0) -> str:
     """
     Get the latest segment transcription.
 
@@ -165,7 +158,12 @@ def get_segment_transcription(wait: bool = True, timeout: float = 30.0) -> str:
         timeout: Maximum time to wait in seconds
 
     Returns:
-        Latest segment transcription or status message
+        Latest segment transcription or status message:
+        - "[Ready]" - Waiting for user to start recording
+        - "[Recording...]" - Currently recording audio
+        - "[Transcribing...]" - Processing audio to text
+        - "[Timeout: No transcription received]" - Wait timed out
+        - Otherwise: The actual transcription text
     """
     global _last_transcription
 
@@ -180,8 +178,13 @@ def get_segment_transcription(wait: bool = True, timeout: float = 30.0) -> str:
         if not got_result:
             return "[Timeout: No transcription received]"
 
-    if _last_transcription is None:
-        return "[No transcription available yet]"
+    # If not waiting or transcription ready, check status
+    if _current_status == "recording":
+        return "[Recording...]"
+    elif _current_status == "transcribing":
+        return "[Transcribing...]"
+    elif _last_transcription is None:
+        return "[Ready]"
 
     result = _last_transcription
     return result

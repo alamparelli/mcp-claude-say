@@ -23,8 +23,16 @@ listen/
 |------|-------------|
 | `start_ptt_mode(key?)` | Start PTT (default: cmd_l+s) |
 | `stop_ptt_mode()` | Stop PTT mode |
-| `get_ptt_status()` | Get current status |
-| `get_segment_transcription(wait?, timeout?)` | Get transcription |
+| `get_ptt_status()` | Get current status (ready/recording/transcribing) |
+| `get_segment_transcription(wait?, timeout?)` | Get transcription (default timeout: 120s) |
+
+### Status Feedback
+`get_segment_transcription()` returns status messages to help identify the current state:
+- `[Ready]` - Waiting for user to start recording
+- `[Recording...]` - Currently recording audio
+- `[Transcribing...]` - Processing audio to text
+- `[Timeout: No transcription received]` - Wait timed out
+- Otherwise: The actual transcription text
 
 ## Development Workflow
 
