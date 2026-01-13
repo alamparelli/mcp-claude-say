@@ -152,6 +152,8 @@ Make sure Claude Code (or Terminal) has Accessibility permissions in System Sett
 | STT RAM | ~2 GB |
 | TTS Latency | < 100ms |
 
+> **Note:** The first transcription is slow (~10-15 seconds) as the Parakeet MLX model loads into memory. Subsequent transcriptions are near-instant.
+
 ## License
 
 MIT
