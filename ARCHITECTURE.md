@@ -1,259 +1,174 @@
 # Claude Voice - Architecture
 
-## Vue d'ensemble
+## Overview
 
-Ce repo contient deux serveurs MCP complémentaires pour créer une boucle vocale complète avec Claude Code :
+This repository contains two complementary MCP servers for creating a complete voice loop with Claude Code:
 
-- **claude-say** (TTS) : Synthèse vocale - Claude parle
-- **claude-listen** (STT) : Reconnaissance vocale - Claude écoute
+- **claude-say** (TTS): Speech synthesis - Claude speaks
+- **claude-listen** (STT): Speech recognition - Claude listens
 
-## Architecture globale
+## Global Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                        Claude Code                               │
-│                            ↑ ↓                                   │
+│                        Claude Code                              │
+│                            ↑ ↓                                  │
 ├─────────────────────────────────────────────────────────────────┤
-│                      MCP Protocol                                │
-│                       ↑       ↓                                  │
+│                      MCP Protocol                               │
+│                       ↑       ↓                                 │
 ├───────────────────────┴───────┴─────────────────────────────────┤
-│                                                                  │
-│  ┌──────────────────┐              ┌──────────────────┐         │
-│  │   claude-listen  │   [stop]     │    claude-say    │         │
-│  │      (STT)       │ ──────────→  │      (TTS)       │         │
-│  │                  │              │                  │         │
-│  │  - Silero VAD    │              │  - macOS say     │         │
-│  │  - Whisper       │              │  - Queue         │         │
-│  └────────┬─────────┘              └────────┬─────────┘         │
-│           │                                  │                   │
-│           ↓                                  ↓                   │
-│      [Microphone]                      [Speakers]                │
-│                                                                  │
-└─────────────────────────────────────────────────────────────────┘
+│                                                                 │
+│  ┌──────────────────┐              ┌──────────────────┐        │
+│  │   claude-listen  │   [stop]     │    claude-say    │        │
+│  │      (STT)       │ ──────────→  │      (TTS)       │        │
+│  │                  │              │                  │        │
+│  │  - Parakeet MLX  │              │  - macOS say     │        │
+│  │  - Push-to-Talk  │              │  - Queue         │        │
+│  └────────┬─────────┘              └────────┬─────────┘        │
+│           │                                 │                  │
+│           ↓                                 ↓                  │
+│      [Microphone]                      [Speakers]              │
+│                                                                │
+└────────────────────────────────────────────────────────────────┘
 ```
 
-## claude-listen - Spécifications
+## claude-say (TTS)
 
-### Composants
+### MCP Tools
 
-| Composant | Technologie | Rôle |
-|-----------|-------------|------|
-| VAD | Silero VAD | Détection d'activité vocale + trigger words |
-| STT | Parakeet MLX (par défaut) / Whisper | Transcription |
-| Audio | sounddevice | Capture micro |
-| Langue | Auto-détect | Détection automatique |
+| Tool | Description |
+|------|-------------|
+| `speak(text, voice?, speed?)` | Queue text to speak, returns immediately |
+| `speak_and_wait(text, voice?, speed?)` | Speak and wait for completion |
+| `stop_speaking()` | Stop immediately and clear queue |
 
-### Transcribers disponibles
+### How it works
 
-| Transcriber | Performance | RAM | Recommandé pour |
-|-------------|-------------|-----|-----------------|
-| **Parakeet MLX** | ~60x temps réel | ~2 GB | Apple Silicon (M1/M2/M3) |
-| Whisper (faster-whisper) | ~10x temps réel | ~4-6 GB | GPU CUDA / Fallback |
+1. Text is added to a queue
+2. Worker thread processes queue sequentially
+3. Uses macOS native `say` command
+4. Supports voice selection and speed control
 
-Configuration via variable d'environnement :
-```bash
-CLAUDE_LISTEN_TRANSCRIBER=parakeet  # ou whisper, auto (défaut)
-```
+## claude-listen (STT)
 
-### Paramètres
+### Components
 
-| Paramètre | Valeur par défaut | Variable d'env | Description |
-|-----------|-------------------|----------------|-------------|
-| Silence timeout | 2 secondes | `CLAUDE_LISTEN_SILENCE_TIMEOUT` | Délai avant transcription |
-| Quick check timeout | 0.5 secondes | `CLAUDE_LISTEN_QUICK_CHECK_TIMEOUT` | Délai avant vérification trigger word |
-| Source audio | Microphone only | - | Pas de capture système |
+| Component | Technology | Role |
+|-----------|------------|------|
+| STT | Parakeet MLX | Fast transcription (Apple Silicon optimized) |
+| Audio | sounddevice | Microphone capture |
+| Hotkey | pynput | Global Push-to-Talk detection |
 
-### Trigger Words (mots déclencheurs)
+### MCP Tools
 
-Dire un de ces mots à la fin d'une phrase déclenche immédiatement la transcription (sans attendre 2s) :
+| Tool | Description |
+|------|-------------|
+| `start_ptt_mode(key?)` | Start PTT mode (default: `cmd_l+s`) |
+| `stop_ptt_mode()` | Stop PTT mode |
+| `get_ptt_status()` | Get current status |
+| `get_segment_transcription(wait?, timeout?)` | Get transcribed text |
 
-- "stop", "terminé", "fini", "ok", "c'est tout"
-- "that's it", "done", "end", "over", "go"
-
-### Tools MCP
-
-```python
-@mcp.tool()
-def start_listening() -> str:
-    """Démarre l'écoute continue."""
-
-@mcp.tool()
-def stop_listening() -> str:
-    """Arrête l'écoute."""
-
-@mcp.tool()
-def get_transcription() -> str:
-    """Récupère la dernière transcription."""
-
-@mcp.tool()
-def listening_status() -> str:
-    """Retourne l'état de l'écoute."""
-```
-
-### Flow d'écoute
+### Push-to-Talk Flow
 
 ```
-1. start_listening() appelé
-2. VAD surveille le micro en continu
-3. Parole détectée →
-   - Signal stop_speaking() à claude-say
-   - Buffer audio commence
-4. Silence 2s détecté →
-   - Whisper transcrit le buffer
-   - Transcription disponible via get_transcription()
-5. Boucle continue jusqu'à stop_listening()
+1. start_ptt_mode() called
+2. User presses hotkey (Left Cmd + S)
+   → Recording starts
+3. User presses hotkey again
+   → Recording stops
+   → Parakeet MLX transcribes audio
+4. get_segment_transcription() returns text
+5. Loop continues until stop_ptt_mode()
 ```
 
-### Interruption
+### Available PTT Keys
 
-Quand l'utilisateur parle :
-1. VAD détecte immédiatement la voix
-2. Envoie `stop_speaking()` à claude-say
-3. claude-say coupe la synthèse en cours
-4. claude-listen buffer et transcrit
+| Key | Description |
+|-----|-------------|
+| `cmd_l+s` | Left Command + S (default) |
+| `cmd_r+m` | Right Command + M |
+| `cmd_l`, `cmd_r` | Command keys alone |
+| `alt_l`, `alt_r` | Option keys |
+| `ctrl_l`, `ctrl_r` | Control keys |
+| `f13`, `f14`, `f15` | Function keys |
+| `space` | Space bar |
 
-Règle simple : **parole = interruption**, pas de cas particulier.
+## Inter-server Coordination
 
-## Coordination inter-serveurs
+When PTT recording starts, claude-listen signals claude-say to stop speaking via a shared coordination module (`shared/coordination.py`).
 
-### Communication
-
-claude-listen → claude-say : Signal "stop" quand parole détectée
-
-Options d'implémentation :
-1. **Import direct** : claude-listen importe les fonctions de claude-say
-2. **Fichier signal** : `/tmp/claude-voice-stop`
-3. **MCP interne** : Appel tool via le protocole
-
-Recommandation : **Import direct** (plus simple, même process Python possible)
-
-## Activation / Désactivation
-
-### Skill "mode conversation"
-
-Active les deux serveurs ensemble :
-```
-User: /conversation
-→ start_listening()
-→ Voice mode ON pour claude-say
-→ Boucle vocale active
-```
-
-### Fin de session
-
-Commande vocale "fin de session" :
-```
-User dit: "fin de session"
-→ Whisper transcrit
-→ Détecte mot-clé
-→ stop_listening()
-→ Voice mode OFF
-```
-
-## Structure du repo
+## Repository Structure
 
 ```
-.claude-say/
-├── ARCHITECTURE.md             # Ce fichier
-├── README.md                   # Documentation utilisateur
-├── requirements.txt            # Dépendances Python
-├── install.sh                  # Installation (télécharge modèle)
+mcp-claude-say/
+├── mcp_server.py              # TTS MCP server (claude-say)
+├── requirements.txt           # Python dependencies
+├── install.sh                 # Installation script
+├── uninstall.sh               # Uninstallation script
 │
-├── say/                        # Module TTS
+├── listen/                    # STT module (claude-listen)
 │   ├── __init__.py
-│   └── mcp_server.py          # Serveur MCP claude-say
+│   ├── mcp_server.py          # STT MCP server
+│   ├── simple_ptt.py          # PTT recorder
+│   ├── ptt_controller.py      # Hotkey detection
+│   ├── parakeet_transcriber.py # Parakeet MLX wrapper
+│   ├── transcriber_base.py    # Base transcriber interface
+│   └── audio.py               # Audio capture
 │
-├── listen/                     # Module STT
+├── shared/                    # Shared utilities
 │   ├── __init__.py
-│   ├── mcp_server.py          # Serveur MCP claude-listen
-│   ├── vad.py                 # Silero VAD wrapper
-│   ├── transcriber.py         # Whisper wrapper
-│   └── audio.py               # Capture audio
+│   └── coordination.py        # TTS ↔ STT coordination
 │
-├── shared/                     # Code partagé
-│   ├── __init__.py
-│   └── coordination.py        # Communication say ↔ listen
-│
-├── models/                     # Modèles (gitignore)
-│   └── ggml-large-v3-turbo.bin
-│
-└── skills/                     # Skills Claude Code
+└── skill/                     # Claude Code skills
+    ├── SKILL.md               # /speak skill
     └── conversation/
-        └── SKILL.md
+        └── SKILL.md           # /conversation skill
 ```
 
 ## Installation
 
-### install.sh
+The `install.sh` script:
 
-```bash
-#!/bin/bash
-# 1. Créer environnement virtuel
-# 2. Installer dépendances (requirements.txt)
-# 3. Télécharger modèle Whisper si absent
-# 4. Configurer MCP servers dans Claude Code
-```
+1. Creates Python virtual environment (`~/.mcp-claude-say/`)
+2. Installs dependencies (mcp, parakeet-mlx, sounddevice, pynput)
+3. Copies skills to `~/.claude/skills/`
+4. Configures MCP servers in Claude Code settings
 
-### requirements.txt
+## Dependencies
 
-```
-mcp
-faster-whisper  # ou whisper.cpp bindings
-silero-vad
-sounddevice
-numpy
-```
+### Python packages
+- `mcp` - MCP server framework
+- `parakeet-mlx` - Fast STT for Apple Silicon
+- `sounddevice` - Audio capture
+- `soundfile` - Audio file handling
+- `numpy` - Audio processing
+- `pynput` - Global hotkey detection
 
-## Dépendances système
-
-- **macOS** : Accès micro (permissions)
-- **Python** : 3.10+
-- **Whisper model** : ~1.5GB (large-v3-turbo)
+### System requirements
+- macOS (uses native `say` command)
+- Apple Silicon recommended for fast STT
+- Python 3.9+
+- Microphone access permission
+- Accessibility permission (for global hotkeys)
 
 ## Performance
 
-| Métrique | Cible |
-|----------|-------|
-| Latence VAD | < 100ms |
-| Latence transcription | < 2s (selon longueur) |
-| RAM | ~2GB (modèle chargé) |
-| CPU | Utilise Metal/GPU si disponible |
+| Metric | Value |
+|--------|-------|
+| STT Speed | ~60x real-time |
+| STT RAM | ~2 GB |
+| TTS Latency | < 100ms |
 
-## Optimisation Claude Code - Model Switching
+## Skills
 
-Pour réduire la latence des réponses vocales, configurer Claude Code pour utiliser Haiku lors des conversations vocales :
+### /speak
+Activates TTS-only mode. Claude speaks responses aloud.
 
-### Configuration recommandée
+### /conversation
+Activates full voice loop (TTS + STT). Push-to-Talk for input, voice for output.
 
-Dans le skill `conversation`, ajouter une instruction pour utiliser Haiku :
+## Future Improvements
 
-```markdown
-# Dans le skill conversation
-model: haiku  # Réponses vocales rapides
-```
-
-Ou via le paramètre `model` dans les Task agents :
-
-```python
-# Pour les réponses texte (qualité)
-model="opus"  # ou "sonnet"
-
-# Pour les réponses vocales (vitesse)
-model="haiku"  # 3-5x plus rapide
-```
-
-### Gain de latence
-
-| Modèle | Temps réponse typique | Recommandé pour |
-|--------|----------------------|-----------------|
-| Opus | 2-4s | Texte à l'écran, tâches complexes |
-| Sonnet | 1-2s | Équilibre qualité/vitesse |
-| **Haiku** | 0.3-0.8s | **Réponses vocales** |
-
-## Évolutions futures
-
-1. **Migration Rust** : Si latence Python insuffisante
-2. **Streaming transcription** : Afficher texte en temps réel
-3. **Wake word** : "Hey Claude" pour activer sans skill
-4. **Multi-langue explicit** : Forcer une langue spécifique
-5. **Streaming TTS** : Envoyer au TTS phrase par phrase pendant la génération
+1. **Streaming TTS** - Send to TTS phrase by phrase during generation
+2. **Wake word** - "Hey Claude" activation without skill
+3. **Voice Activity Detection** - Optional automatic recording start/stop
