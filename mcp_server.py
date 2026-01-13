@@ -91,6 +91,31 @@ TRAILING_SILENCE_MS = 300
 
 
 @mcp.tool()
+def speak(text: str, voice: str | None = None, speed: float = 1.0) -> str:
+    """
+    Queue text to speak without waiting. Returns immediately.
+    Use this for natural flowing speech - queue multiple messages that play smoothly.
+
+    Args:
+        text: The text to speak
+        voice: Voice to use (None = default Siri/system voice)
+        speed: Speech speed (0.5 = slow, 1.0 = normal, 2.0 = fast)
+
+    Returns:
+        Confirmation that text was queued
+    """
+    ensure_worker_running()
+    rate = int(speed * 175)  # 175 words/min = normal speed
+
+    # Add trailing silence so the last word is fully heard
+    text_with_silence = f"{text} [[slnc {TRAILING_SILENCE_MS}]]"
+
+    speech_queue.put((text_with_silence, voice, rate))
+
+    return "Queued"
+
+
+@mcp.tool()
 def speak_and_wait(text: str, voice: str | None = None, speed: float = 1.1) -> str:
     """
     Speak text and wait until speech is finished before returning.

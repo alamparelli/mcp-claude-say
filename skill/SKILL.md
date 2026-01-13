@@ -12,11 +12,14 @@ You now have access to text-to-speech via the `claude-say` MCP server.
 
 | Tool | Description |
 |------|-------------|
-| `speak(text, voice?, speed?)` | Add text to the speech queue |
+| `speak(text, voice?, speed?)` | Add text to queue, returns immediately (preferred for natural flow) |
+| `speak_and_wait(text, voice?, speed?)` | Speak and block until complete (use when expecting a response) |
 | `stop_speaking()` | Stop immediately and clear the queue |
-| `skip()` | Skip to the next message in queue |
-| `list_voices()` | List available system voices |
-| `queue_status()` | Get current queue status |
+
+### When to use which tool
+
+- **speak()**: Default choice. Queue multiple sentences for natural, flowing speech. Returns immediately so you can queue several messages.
+- **speak_and_wait()**: Use when you need to ask a question and wait for the user to respond, or when you need to ensure speech completes before taking an action.
 
 ## Expressive Modes
 

@@ -14,15 +14,15 @@ Uses **simple Push-to-Talk (PTT)** mode:
 
 ### claude-listen (STT - Push-to-Talk)
 
-**Synchronous mode (blocking):**
+**Synchronous mode (blocking) - RECOMMENDED:**
 | Tool | Description |
 |------|-------------|
 | `start_ptt_mode(key?)` | Start PTT mode (default: Left Cmd + S) |
 | `stop_ptt_mode()` | Stop PTT mode |
 | `get_ptt_status()` | Get PTT state |
-| `get_segment_transcription(wait?, timeout?)` | Get transcription (blocks) |
+| `get_segment_transcription(wait?, timeout?)` | Wait for transcription (blocks until ready) |
 
-**Background mode (non-blocking) - RECOMMENDED:**
+**Background mode (non-blocking) - Alternative:**
 | Tool | Description |
 |------|-------------|
 | `start_ptt_background(key?)` | Start PTT in background process |
@@ -32,8 +32,32 @@ Uses **simple Push-to-Talk (PTT)** mode:
 ### claude-say (TTS)
 | Tool | Description |
 |------|-------------|
-| `speak_and_wait(text, voice?, speed?)` | Speak and wait for completion |
+| `speak(text, voice?, speed?)` | Queue text, returns immediately (preferred for natural flow) |
+| `speak_and_wait(text, voice?, speed?)` | Speak and wait for completion (use when expecting response) |
 | `stop_speaking()` | Stop immediately |
+
+### When to use which TTS tool
+
+**IMPORTANT - Natural Speech Pattern:**
+- **speak()**: Use for normal responses. One single speak() call with your complete answer is the default.
+- **speak_and_wait()**: ONLY use when you have a VERY LONG response broken into multiple parts. Put speak_and_wait() at the END to ensure all speech completes before listening.
+- **Default speed**: Always use `speed=1` (1.0) for natural pacing.
+
+**Best practice - use speak() for normal responses:**
+```python
+# For typical responses, use ONE speak() call:
+speak("I understand completely. The function you're looking for handles authentication and it's located in the auth module. It validates tokens and manages user sessions.", speed=1)
+```
+
+**Only use speak_and_wait() for very long multi-part explanations:**
+```python
+# For very long responses that must be split:
+speak("First part of a very detailed explanation that covers the initial concept.", speed=1)
+speak("Second part that continues with more details.", speed=1)
+speak_and_wait("Final part that concludes the explanation.", speed=1)  # Only the last one waits
+```
+
+**Why this matters:** speak() returns immediately without blocking. speak_and_wait() blocks until speech completes, which is only needed when breaking long responses into parts to ensure proper sequencing.
 
 ## How It Works
 
@@ -64,14 +88,16 @@ Uses **simple Push-to-Talk (PTT)** mode:
 # 1. Start PTT mode
 start_ptt_mode()  # Uses default key: cmd_l+s
 
-# 2. Confirm vocally
+# 2. Confirm vocally (use speak_and_wait since waiting for first input)
 speak_and_wait("Mode conversation activé. Appuie sur Commande gauche S pour parler.")
 
 # 3. Wait for transcription
 transcription = get_segment_transcription(wait=True, timeout=60)
 
-# 4. Process and respond
-speak_and_wait("Your response here...")
+# 4. Process and respond (use speak() for natural flow, speak_and_wait() at the end)
+speak("Here's what I found.")
+speak("The first point is this.")
+speak_and_wait("What would you like to know next?")  # Blocks before listening
 
 # 5. Loop back to step 3
 ```
@@ -93,9 +119,10 @@ while True:
         speak_and_wait("Tu es toujours là?")
         continue
 
-    # Process and respond
-    response = process(text)
-    speak_and_wait(response)
+    # Process and respond - use speak() for flow, speak_and_wait() at end
+    speak("I understand your question.")
+    speak("Let me explain.")
+    speak_and_wait("Does that make sense?")  # Last message blocks
 
 # End session
 stop_ptt_mode()
@@ -110,10 +137,9 @@ stop_ptt_mode()
 speak_and_wait("Fin de la session vocale. À bientôt!")
 ```
 
-## Background Mode (Non-Blocking) - RECOMMENDED
+## Background Mode (Non-Blocking) - Alternative
 
-Background mode avoids blocking Claude while waiting for transcriptions.
-PTT runs in a separate process and writes to a file.
+Background mode uses polling instead of blocking. Use this if you need Claude to do other tasks while waiting for speech.
 
 ### Starting Background Mode
 
@@ -155,19 +181,20 @@ stop_ptt_background()
 speak_and_wait("Fin de la session vocale.")
 ```
 
-### Advantages of Background Mode
+### When to use Background Mode
 
-- **Non-blocking**: Claude isn't frozen waiting for speech
-- **Responsive**: Can do other things while waiting
-- **Stable**: No long-running tool calls that might timeout
+- When you need Claude to perform other tasks while waiting
+- When synchronous mode times out frequently
+- Note: Creates more visible tool calls in the interface
 
 ## Important Rules
 
-1. **Use speak_and_wait()** - Ensures TTS completes before listening
-2. **No code vocally** - Never read code, paths, or logs aloud
-3. **Match language** - Respond in the same language as the user
-4. **Brief by default** - Keep responses short unless asked otherwise
-5. **Execute directly** - Don't announce actions, just do them and report results
+1. **Use speak() for natural flow** - Queue multiple sentences without blocking
+2. **Use speak_and_wait() at the end** - Only when you need to wait for user response
+3. **No code vocally** - Never read code, paths, or logs aloud
+4. **Match language** - Respond in the same language as the user
+5. **Detailed responses by default** - Give thorough, complete explanations naturally. Technical topics, concepts, and questions deserve full answers. Don't artificially shorten responses.
+6. **Execute directly** - Don't announce actions, just do them and report results
 
 ## Error Handling
 
