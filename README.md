@@ -71,7 +71,7 @@ Say **"fin de session"** to end the conversation.
 ## Requirements
 
 - **macOS** (uses native `say` command + Parakeet MLX)
-- **Apple Silicon** recommended (M1/M2/M3/M4) for fast STT
+- **Apple Silicon** recommended for fast STT
 - **Python 3.9+**
 - **Claude Code** CLI
 
