@@ -1,0 +1,7 @@
+# Claude-Listen - Parakeet-MLX STT
+# Includes base + Parakeet model (~2.3GB download on first use)
+
+-r requirements-base.txt
+
+# Speech-to-Text (Parakeet-MLX - fast STT for Apple Silicon)
+parakeet-mlx

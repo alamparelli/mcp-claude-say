@@ -49,10 +49,44 @@ class SimplePTTRecorder:
         self._lock = threading.Lock()
 
     def _get_transcriber(self):
-        """Lazy load transcriber."""
+        """
+        Lazy load transcriber.
+
+        Tries to load in order:
+        1. Parakeet-MLX (recommended, if installed)
+        2. SpeechAnalyzer (if available on macOS 26+)
+        3. Raises error if none available
+        """
         if self._transcriber is None:
-            from .parakeet_transcriber import get_parakeet_transcriber
-            self._transcriber = get_parakeet_transcriber()
+            # Try Parakeet-MLX first (recommended)
+            try:
+                from .parakeet_transcriber import get_parakeet_transcriber
+                self._transcriber = get_parakeet_transcriber()
+                print("🎯 Using Parakeet-MLX")
+                return self._transcriber
+            except ImportError:
+                pass
+
+            # Try SpeechAnalyzer (experimental, macOS 26+)
+            try:
+                from .speechanalyzer_transcriber import (
+                    is_speechanalyzer_available,
+                    get_speechanalyzer_transcriber
+                )
+                if is_speechanalyzer_available():
+                    self._transcriber = get_speechanalyzer_transcriber()
+                    print("🎯 Using SpeechAnalyzer (Apple native)")
+                    return self._transcriber
+            except ImportError:
+                pass
+
+            # No transcriber available
+            raise RuntimeError(
+                "No STT transcriber available. Install with:\n"
+                "  - Parakeet (recommended): pip install parakeet-mlx\n"
+                "  - SpeechAnalyzer: Requires macOS 26+ and CLI build"
+            )
+
         return self._transcriber
 
     @property

@@ -1,0 +1,7 @@
+# Claude-Listen - Apple SpeechAnalyzer STT
+# Requires macOS 26+ - Uses Apple's built-in speech models (0 extra download)
+
+-r requirements-base.txt
+
+# No additional Python dependencies needed
+# SpeechAnalyzer uses a native Swift CLI wrapper
