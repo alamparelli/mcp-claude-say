@@ -1,3 +1,9 @@
+---
+name: conversation
+description: "Bidirectional voice conversation with Push-to-Talk. Use when user says: 'conversation mode', 'let's talk', 'parlons', 'voice conversation', 'dialogue vocal', 'PTT mode', or wants to speak WITH Claude (not just listen). For one-way TTS (Claude speaks, user types), use /speak instead."
+user_invocable: true
+---
+
 # Conversation Mode - Voice Loop with Push-to-Talk
 
 You now have access to both text-to-speech (claude-say) AND speech-to-text (claude-listen) for a complete voice conversation.

@@ -1,6 +1,6 @@
 ---
 name: speak
-description: "TTS Voice Mode - Claude speaks responses via macOS speech synthesis. Use this skill when user says: 'speak', 'talk to me', 'voice mode', 'vocal on', 'read aloud', or asks Claude to vocalize responses. Disable with 'stop', 'silence', 'vocal off'."
+description: "One-way TTS mode - Claude speaks aloud while user types. Use when user says: 'speak', 'read aloud', 'vocal on', 'lis-moi', 'parle-moi', or wants Claude to vocalize responses without responding vocally themselves. For bidirectional voice conversation (user speaks too), use /conversation instead."
 user_invocable: true
 ---
 
