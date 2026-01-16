@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist ...>
+<plist version="1.0">
+<dict>
+  <key>CFBundleIdentifier</key><string>com.example.apple-speechanalyzer-cli</string>
+  <key>CFBundleName</key><string>apple-speechanalyzer-cli</string>
+  <key>NSSpeechRecognitionUsageDescription</key>
+  <string>Needed to transcribe audio files offline.</string>
+</dict>
+</plist>

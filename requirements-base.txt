@@ -1,0 +1,13 @@
+# Claude-Say & Claude-Listen - Base Dependencies
+# These are required for all installations
+
+# MCP Framework
+mcp>=1.0.0
+
+# Audio capture
+sounddevice
+numpy
+soundfile
+
+# Global hotkey detection (for push-to-talk)
+pynput
