@@ -93,13 +93,13 @@ if [[ -z "$INSTALL_MODE" ]]; then
     echo -e "  ${GREEN}1)${NC} TTS only (claude-say)"
     echo -e "     ${YELLOW}Minimal - Text-to-Speech only${NC}"
     echo ""
-    echo -e "  ${GREEN}2)${NC} TTS + STT with Parakeet-MLX"
+    echo -e "  ${GREEN}2)${NC} TTS + STT with Parakeet-MLX ${GREEN}(Recommended)${NC}"
     echo -e "     ${YELLOW}Full voice - Downloads ~2.3GB model on first use${NC}"
     echo ""
 
     if check_macos_26; then
-        echo -e "  ${GREEN}3)${NC} TTS + STT with Apple SpeechAnalyzer ${GREEN}(Recommended)${NC}"
-        echo -e "     ${YELLOW}Full voice - Uses macOS 26 native STT, no extra download${NC}"
+        echo -e "  ${GREEN}3)${NC} TTS + STT with Apple SpeechAnalyzer"
+        echo -e "     ${YELLOW}Full voice - Uses macOS 26 native STT, no extra download (experimental)${NC}"
         echo ""
     else
         echo -e "  ${RED}3)${NC} TTS + STT with Apple SpeechAnalyzer"

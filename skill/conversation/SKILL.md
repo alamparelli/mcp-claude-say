@@ -85,7 +85,7 @@ speak_and_wait("Final part that concludes the explanation.", speed=1)  # Only th
 1. User presses **Left Cmd + S** to start recording
 2. Audio is captured continuously
 3. User presses **Left Cmd + S** again to stop
-4. Audio is saved and transcribed with **Parakeet MLX**
+4. Audio is saved and transcribed with the configured STT engine
 5. Claude processes and responds **vocally**
 
 ## Starting Conversation Mode

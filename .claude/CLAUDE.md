@@ -3,19 +3,24 @@
 ## Overview
 MCP servers for Claude Code voice interaction:
 - **claude-say**: Text-to-Speech (TTS) via macOS `say` command
-- **claude-listen**: Speech-to-Text (STT) with simple PTT mode and Parakeet-MLX
+- **claude-listen**: Speech-to-Text (STT) with simple PTT mode
+
+## STT Backends
+- **Parakeet-MLX** (Recommended) - Downloads ~2.3GB model, excellent accuracy
+- **Apple SpeechAnalyzer** (Experimental) - macOS 26+ native, no download but less reliable
 
 ## Architecture
 
 ### Listen Module (Simple PTT)
 ```
 listen/
-├── audio.py              # Audio capture with sounddevice
-├── simple_ptt.py         # Simple PTT recorder (no VAD)
-├── ptt_controller.py     # Hotkey detection with pynput
-├── parakeet_transcriber.py  # STT with Parakeet-MLX
-├── transcriber_base.py   # Base transcriber interface
-└── mcp_server.py         # MCP tools (4 tools only)
+├── audio.py                      # Audio capture with sounddevice
+├── simple_ptt.py                 # Simple PTT recorder (no VAD)
+├── ptt_controller.py             # Hotkey detection with pynput
+├── parakeet_transcriber.py       # STT with Parakeet-MLX (recommended)
+├── speechanalyzer_transcriber.py # STT with Apple SpeechAnalyzer (experimental)
+├── transcriber_base.py           # Base transcriber interface
+└── mcp_server.py                 # MCP tools (4 tools only)
 ```
 
 ### MCP Tools (claude-listen)
@@ -68,8 +73,9 @@ After running, restart Claude Code to test changes.
 ## Dependencies
 - mcp>=1.0.0
 - sounddevice, numpy, soundfile
-- parakeet-mlx
 - pynput
+- parakeet-mlx (if using Parakeet backend)
+- Swift/Xcode (if using SpeechAnalyzer backend)
 
 ## Testing
 After `test-pipeline.sh`:
