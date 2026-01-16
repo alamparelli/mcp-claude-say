@@ -53,12 +53,21 @@ class SimplePTTRecorder:
         Lazy load transcriber.
 
         Tries to load in order:
-        1. SpeechAnalyzer (if available on macOS 26+)
-        2. Parakeet-MLX (if installed)
+        1. Parakeet-MLX (recommended, if installed)
+        2. SpeechAnalyzer (if available on macOS 26+)
         3. Raises error if none available
         """
         if self._transcriber is None:
-            # Try SpeechAnalyzer first (faster, no download)
+            # Try Parakeet-MLX first (recommended)
+            try:
+                from .parakeet_transcriber import get_parakeet_transcriber
+                self._transcriber = get_parakeet_transcriber()
+                print("🎯 Using Parakeet-MLX")
+                return self._transcriber
+            except ImportError:
+                pass
+
+            # Try SpeechAnalyzer (experimental, macOS 26+)
             try:
                 from .speechanalyzer_transcriber import (
                     is_speechanalyzer_available,
@@ -71,20 +80,11 @@ class SimplePTTRecorder:
             except ImportError:
                 pass
 
-            # Try Parakeet-MLX
-            try:
-                from .parakeet_transcriber import get_parakeet_transcriber
-                self._transcriber = get_parakeet_transcriber()
-                print("🎯 Using Parakeet-MLX")
-                return self._transcriber
-            except ImportError:
-                pass
-
             # No transcriber available
             raise RuntimeError(
                 "No STT transcriber available. Install with:\n"
-                "  - SpeechAnalyzer: Requires macOS 26+ and CLI build\n"
-                "  - Parakeet: pip install parakeet-mlx"
+                "  - Parakeet (recommended): pip install parakeet-mlx\n"
+                "  - SpeechAnalyzer: Requires macOS 26+ and CLI build"
             )
 
         return self._transcriber
