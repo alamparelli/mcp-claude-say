@@ -11,6 +11,7 @@ import tempfile
 import subprocess
 import threading
 import logging
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException
@@ -34,10 +35,14 @@ TEMP_PREFIX = "chatterbox_tts_"
 
 # Global model instance (loaded once at startup)
 tts_model = None
+model_load_error: str | None = None
 
 # Track active playback processes for targeted stop
 active_processes: list[subprocess.Popen] = []
 process_lock = threading.Lock()
+
+# Thread pool for async playback (bounded to prevent thread pile-up)
+playback_executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="tts_playback")
 
 
 class TTSRequest(BaseModel):
@@ -74,21 +79,27 @@ def get_device() -> str:
         import torch
         if torch.backends.mps.is_available():
             return "mps"
-    except:
-        pass
+        logger.warning("Torch MPS unavailable, falling back to CPU")
+    except Exception as e:
+        logger.warning(f"Torch not available ({e}), falling back to CPU")
     return "cpu"
 
 
 def load_model():
     """Load Chatterbox model into memory."""
-    global tts_model
+    global tts_model, model_load_error
     if tts_model is None:
-        logger.info("Loading Chatterbox TTS model...")
-        from chatterbox.tts import ChatterboxTTS
-        device = get_device()
-        logger.info(f"Using device: {device}")
-        tts_model = ChatterboxTTS.from_pretrained(device=device)
-        logger.info("Model loaded successfully!")
+        try:
+            logger.info("Loading Chatterbox TTS model...")
+            from chatterbox.tts import ChatterboxTTS
+            device = get_device()
+            logger.info(f"Using device: {device}")
+            tts_model = ChatterboxTTS.from_pretrained(device=device)
+            logger.info("Model loaded successfully!")
+            model_load_error = None
+        except Exception as e:
+            model_load_error = str(e)
+            raise
     return tts_model
 
 
@@ -116,8 +127,9 @@ def play_audio_blocking(temp_path: str):
 
 
 def play_audio_async(temp_path: str):
-    """Play audio in background thread with cleanup."""
+    """Play audio in thread pool with cleanup."""
     def _play():
+        proc = None
         try:
             proc = subprocess.Popen(
                 ["afplay", temp_path],
@@ -126,7 +138,11 @@ def play_audio_async(temp_path: str):
             )
             with process_lock:
                 active_processes.append(proc)
-            proc.wait()
+            try:
+                proc.wait()
+            except Exception:
+                # Process may have been terminated by /stop
+                pass
             with process_lock:
                 if proc in active_processes:
                     active_processes.remove(proc)
@@ -136,8 +152,7 @@ def play_audio_async(temp_path: str):
             except:
                 pass
 
-    thread = threading.Thread(target=_play, daemon=True)
-    thread.start()
+    playback_executor.submit(_play)
 
 
 @asynccontextmanager
@@ -159,7 +174,11 @@ app = FastAPI(title="Chatterbox TTS Service", lifespan=lifespan)
 @app.get("/health")
 async def health_check():
     """Health check endpoint."""
-    return {"status": "ok", "model_loaded": tts_model is not None}
+    response = {"status": "ok", "model_loaded": tts_model is not None}
+    if model_load_error:
+        response["status"] = "degraded"
+        response["error"] = model_load_error
+    return response
 
 
 @app.get("/voices")

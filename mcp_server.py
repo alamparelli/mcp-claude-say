@@ -30,6 +30,7 @@ DEFAULT_VOICE = os.getenv("DEFAULT_VOICE", "female_voice")
 # Health check cache to avoid blocking worker thread
 _last_health_check = 0.0
 _health_ok = False
+_health_lock = threading.Lock()
 HEALTH_CHECK_TTL = 2.0  # seconds
 
 # Ready notification sound (macOS system sound)
@@ -40,19 +41,22 @@ def chatterbox_available() -> bool:
     """
     Check if Chatterbox TTS service is running.
     Caches result for HEALTH_CHECK_TTL seconds to avoid blocking.
+    Thread-safe via lock.
     """
     global _last_health_check, _health_ok
     now = time.time()
-    if now - _last_health_check < HEALTH_CHECK_TTL:
+
+    with _health_lock:
+        if now - _last_health_check < HEALTH_CHECK_TTL:
+            return _health_ok
+        try:
+            req = urllib.request.urlopen(f"{CHATTERBOX_URL}/health", timeout=1)
+            data = json.loads(req.read().decode())
+            _health_ok = data.get("model_loaded", False)
+        except:
+            _health_ok = False
+        _last_health_check = now
         return _health_ok
-    try:
-        req = urllib.request.urlopen(f"{CHATTERBOX_URL}/health", timeout=1)
-        data = json.loads(req.read().decode())
-        _health_ok = data.get("model_loaded", False)
-    except:
-        _health_ok = False
-    _last_health_check = now
-    return _health_ok
 
 
 def speak_with_chatterbox(text: str, blocking: bool = True, voice: str | None = None) -> bool:
