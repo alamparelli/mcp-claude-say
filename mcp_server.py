@@ -8,6 +8,7 @@ Provides queue management and speech control for Claude Code.
 import subprocess
 import threading
 import os
+import time
 import urllib.request
 import json
 from queue import Queue, Empty
@@ -21,23 +22,37 @@ current_process: subprocess.Popen | None = None
 process_lock = threading.Lock()
 worker_thread: threading.Thread | None = None
 
-# TTS Service configuration
-CHATTERBOX_URL = "http://127.0.0.1:8123"
-USE_CHATTERBOX = True  # Set to False to always use macOS voices
-DEFAULT_VOICE = "female_voice"  # Voice sample to use for neural TTS
+# TTS Service configuration (env-configurable)
+CHATTERBOX_URL = os.getenv("CHATTERBOX_URL", "http://127.0.0.1:8123")
+USE_CHATTERBOX = os.getenv("USE_CHATTERBOX", "1") == "1"
+DEFAULT_VOICE = os.getenv("DEFAULT_VOICE", "female_voice")
+
+# Health check cache to avoid blocking worker thread
+_last_health_check = 0.0
+_health_ok = False
+HEALTH_CHECK_TTL = 2.0  # seconds
 
 # Ready notification sound (macOS system sound)
 READY_SOUND = "/System/Library/Sounds/Pop.aiff"
 
 
 def chatterbox_available() -> bool:
-    """Check if Chatterbox TTS service is running."""
+    """
+    Check if Chatterbox TTS service is running.
+    Caches result for HEALTH_CHECK_TTL seconds to avoid blocking.
+    """
+    global _last_health_check, _health_ok
+    now = time.time()
+    if now - _last_health_check < HEALTH_CHECK_TTL:
+        return _health_ok
     try:
         req = urllib.request.urlopen(f"{CHATTERBOX_URL}/health", timeout=1)
         data = json.loads(req.read().decode())
-        return data.get("model_loaded", False)
+        _health_ok = data.get("model_loaded", False)
     except:
-        return False
+        _health_ok = False
+    _last_health_check = now
+    return _health_ok
 
 
 def speak_with_chatterbox(text: str, blocking: bool = True, voice: str | None = None) -> bool:
@@ -68,10 +83,11 @@ def stop_chatterbox() -> bool:
             f"{CHATTERBOX_URL}/stop",
             method="POST"
         )
-        urllib.request.urlopen(req, timeout=5)
+        urllib.request.urlopen(req, timeout=2)
         return True
     except:
         return False
+
 
 def play_ready_sound():
     """Play a short notification sound to indicate ready to listen."""
@@ -82,9 +98,9 @@ def play_ready_sound():
             stderr=subprocess.DEVNULL
         )
 
+
 def clear_listen_segments():
     """Clear segments from claude-listen to avoid feedback loop."""
-    import shutil
     segment_dir = "/tmp/claude-segments"
     if os.path.exists(segment_dir):
         for f in os.listdir(segment_dir):
@@ -163,6 +179,7 @@ def speak(text: str, voice: str | None = None, speed: float = 1.0) -> str:
                - "Samantha": macOS female voice (fallback)
                - Any other macOS voice name
         speed: Speech speed (0.5 = slow, 1.0 = normal, 2.0 = fast)
+               Note: speed only applies to macOS voices; neural TTS uses natural pacing.
 
     Returns:
         Confirmation that text was queued
@@ -195,6 +212,7 @@ def speak_and_wait(text: str, voice: str | None = None, speed: float = 1.1) -> s
                - "Samantha": macOS female voice (fallback)
                - Any other macOS voice name
         speed: Speech speed (0.5 = slow, 1.0 = normal, 1.1 = default, 2.0 = fast)
+               Note: speed only applies to macOS voices; neural TTS uses natural pacing.
 
     Returns:
         Confirmation that speech has completed
@@ -242,8 +260,9 @@ def stop_speaking() -> str:
         except Empty:
             break
 
-    # Stop Chatterbox playback
-    stop_chatterbox()
+    # Stop Chatterbox playback (only if enabled)
+    if USE_CHATTERBOX:
+        stop_chatterbox()
 
     # Stop macOS say process
     with process_lock:
