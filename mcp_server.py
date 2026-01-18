@@ -1,13 +1,15 @@
 #!/usr/bin/env python3
 """
 Claude-Say MCP Server
-Text-to-speech MCP server for macOS using the native 'say' command.
+Text-to-speech MCP server with Chatterbox neural TTS and macOS voice fallback.
 Provides queue management and speech control for Claude Code.
 """
 
 import subprocess
 import threading
 import os
+import urllib.request
+import json
 from queue import Queue, Empty
 from mcp.server.fastmcp import FastMCP
 
@@ -19,8 +21,57 @@ current_process: subprocess.Popen | None = None
 process_lock = threading.Lock()
 worker_thread: threading.Thread | None = None
 
+# TTS Service configuration
+CHATTERBOX_URL = "http://127.0.0.1:8123"
+USE_CHATTERBOX = True  # Set to False to always use macOS voices
+DEFAULT_VOICE = "female_voice"  # Voice sample to use for neural TTS
+
 # Ready notification sound (macOS system sound)
 READY_SOUND = "/System/Library/Sounds/Pop.aiff"
+
+
+def chatterbox_available() -> bool:
+    """Check if Chatterbox TTS service is running."""
+    try:
+        req = urllib.request.urlopen(f"{CHATTERBOX_URL}/health", timeout=1)
+        data = json.loads(req.read().decode())
+        return data.get("model_loaded", False)
+    except:
+        return False
+
+
+def speak_with_chatterbox(text: str, blocking: bool = True, voice: str | None = None) -> bool:
+    """
+    Speak using Chatterbox TTS service.
+    Returns True if successful, False if service unavailable.
+    """
+    try:
+        endpoint = "/speak" if blocking else "/speak_async"
+        payload = {"text": text, "voice": voice or DEFAULT_VOICE}
+        data = json.dumps(payload).encode("utf-8")
+        req = urllib.request.Request(
+            f"{CHATTERBOX_URL}{endpoint}",
+            data=data,
+            headers={"Content-Type": "application/json"},
+            method="POST"
+        )
+        response = urllib.request.urlopen(req, timeout=60)
+        return response.status == 200
+    except:
+        return False
+
+
+def stop_chatterbox() -> bool:
+    """Stop Chatterbox playback."""
+    try:
+        req = urllib.request.Request(
+            f"{CHATTERBOX_URL}/stop",
+            method="POST"
+        )
+        urllib.request.urlopen(req, timeout=5)
+        return True
+    except:
+        return False
 
 def play_ready_sound():
     """Play a short notification sound to indicate ready to listen."""
@@ -55,9 +106,18 @@ def speech_worker():
         if item is None:  # Stop signal
             break
 
-        text, voice, rate = item
+        text, voice, rate, use_neural = item
 
-        # Build the command (voice is optional)
+        # Try Chatterbox for neural TTS (if enabled and no specific voice requested)
+        if use_neural and USE_CHATTERBOX and chatterbox_available():
+            # Remove macOS-specific silence markup for Chatterbox
+            clean_text = text.replace(f" [[slnc {TRAILING_SILENCE_MS}]]", "")
+            if speak_with_chatterbox(clean_text, blocking=True):
+                speech_queue.task_done()
+                continue
+            # Fall through to macOS voice if Chatterbox fails
+
+        # Fallback to macOS 'say' command
         cmd = ["/usr/bin/say", "-r", str(rate)]
         if voice:
             cmd.extend(["-v", voice])
@@ -98,7 +158,10 @@ def speak(text: str, voice: str | None = None, speed: float = 1.0) -> str:
 
     Args:
         text: The text to speak
-        voice: Voice to use (None = default Siri/system voice)
+        voice: Voice to use. Options:
+               - None or "chatterbox": Neural TTS (Chatterbox, natural sounding)
+               - "Samantha": macOS female voice (fallback)
+               - Any other macOS voice name
         speed: Speech speed (0.5 = slow, 1.0 = normal, 2.0 = fast)
 
     Returns:
@@ -107,12 +170,16 @@ def speak(text: str, voice: str | None = None, speed: float = 1.0) -> str:
     ensure_worker_running()
     rate = int(speed * 175)  # 175 words/min = normal speed
 
-    # Add trailing silence so the last word is fully heard
+    # Determine if we should use neural TTS
+    use_neural = voice is None or voice.lower() == "chatterbox"
+    macos_voice = None if use_neural else voice
+
+    # Add trailing silence so the last word is fully heard (for macOS voices)
     text_with_silence = f"{text} [[slnc {TRAILING_SILENCE_MS}]]"
 
-    speech_queue.put((text_with_silence, voice, rate))
+    speech_queue.put((text_with_silence, macos_voice, rate, use_neural))
 
-    return "Queued"
+    return "Queued (neural TTS)" if use_neural else f"Queued ({voice})"
 
 
 @mcp.tool()
@@ -123,7 +190,10 @@ def speak_and_wait(text: str, voice: str | None = None, speed: float = 1.1) -> s
 
     Args:
         text: The text to speak
-        voice: Voice to use (None = default Siri/system voice)
+        voice: Voice to use. Options:
+               - None or "chatterbox": Neural TTS (Chatterbox, natural sounding)
+               - "Samantha": macOS female voice (fallback)
+               - Any other macOS voice name
         speed: Speech speed (0.5 = slow, 1.0 = normal, 1.1 = default, 2.0 = fast)
 
     Returns:
@@ -132,10 +202,14 @@ def speak_and_wait(text: str, voice: str | None = None, speed: float = 1.1) -> s
     ensure_worker_running()
     rate = int(speed * 175)  # 175 words/min = normal speed
 
-    # Add trailing silence so the last word is fully heard
+    # Determine if we should use neural TTS
+    use_neural = voice is None or voice.lower() == "chatterbox"
+    macos_voice = None if use_neural else voice
+
+    # Add trailing silence so the last word is fully heard (for macOS voices)
     text_with_silence = f"{text} [[slnc {TRAILING_SILENCE_MS}]]"
 
-    speech_queue.put((text_with_silence, voice, rate))
+    speech_queue.put((text_with_silence, macos_voice, rate, use_neural))
 
     # Wait for the queue to be processed
     speech_queue.join()
@@ -146,7 +220,7 @@ def speak_and_wait(text: str, voice: str | None = None, speed: float = 1.1) -> s
     # Play ready sound to indicate listening is active
     play_ready_sound()
 
-    return "Speech completed"
+    return "Speech completed (neural TTS)" if use_neural else f"Speech completed ({voice})"
 
 
 @mcp.tool()
@@ -168,7 +242,10 @@ def stop_speaking() -> str:
         except Empty:
             break
 
-    # Stop current process
+    # Stop Chatterbox playback
+    stop_chatterbox()
+
+    # Stop macOS say process
     with process_lock:
         if current_process and current_process.poll() is None:
             current_process.terminate()
