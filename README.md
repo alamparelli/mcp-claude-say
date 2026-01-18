@@ -13,6 +13,50 @@ Voice interaction MCP servers for Claude Code. Includes both Text-to-Speech (TTS
 - **Multilingual** - Speaks and understands multiple languages
 - **Lightweight** - Uses native macOS speech synthesis, no external APIs for TTS
 
+## Optional: Neural TTS (Chatterbox)
+
+For higher-quality, natural-sounding speech, you can optionally enable **Chatterbox** neural TTS. This replaces the robotic macOS `say` command with ElevenLabs-quality voice synthesis that runs 100% locally.
+
+### Setup
+
+```bash
+# Requires Python 3.11 (Chatterbox doesn't support 3.12+)
+python3.11 -m venv venv-tts
+source venv-tts/bin/activate
+pip install chatterbox-tts uvicorn fastapi torchaudio
+
+# Add a voice sample (5-10 seconds of clear speech, 24kHz WAV)
+mkdir -p voices
+# Copy your sample to voices/female_voice.wav
+```
+
+### Usage
+
+**Important:** The Chatterbox service must be started manually before use:
+
+```bash
+# Start the service (~5-10 sec to load model)
+~/.mcp-claude-say/start_tts_service.sh
+
+# Verify it's running
+curl http://127.0.0.1:8123/health
+
+# Stop when done (frees ~1.5GB RAM)
+~/.mcp-claude-say/stop_tts_service.sh
+```
+
+If the service isn't running, TTS automatically falls back to macOS `say` command.
+
+### Why Manual Start?
+
+| Factor | Auto-start | Manual |
+|--------|-----------|--------|
+| RAM usage | ~1.5GB constant | 0 when off |
+| Startup delay | None | 5-10 sec |
+| Battery | Slight drain | None when off |
+
+For occasional voice conversations, manual start is recommended.
+
 ## One-Line Installation
 
 ```bash
@@ -64,9 +108,24 @@ Say **"fin de session"** to end the conversation.
 | Key | Description |
 |-----|-------------|
 | `cmd_l+s` | Left Command + S (default) |
+| `cmd_r` | Right Command (recommended for MacBooks) |
 | `cmd_r+m` | Right Command + M |
 | `alt_l`, `alt_r` | Option keys |
 | `f13`, `f14`, `f15` | Function keys |
+
+### MacBook Hotkey Notes
+
+Some hotkeys don't work well on MacBooks:
+
+| Hotkey | Issue |
+|--------|-------|
+| `alt_l+c` | ❌ Produces `ç` character on macOS |
+| `f13`, `f14`, `f15` | ❌ MacBooks don't have these keys |
+| `ctrl_r` | ❌ MacBooks don't have Right Control |
+| `cmd_l+s` | ⚠️ Conflicts with Save in most apps |
+| `cmd_r` | ✅ Right Command alone - no conflicts, works everywhere |
+
+**Recommendation:** Use `cmd_r` (Right Command) for PTT on MacBooks.
 
 ## Requirements
 
