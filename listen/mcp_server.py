@@ -9,35 +9,40 @@ Simple operation:
 - Press hotkey again to stop and transcribe
 - get_segment_transcription(): Get the transcribed text
 
-DEBUG: Logs go to stderr (visible in Claude Code's MCP console)
+Logs go to:
+- stderr (visible in Claude Code's MCP console)
+- /tmp/claude-listen.log (file for debugging)
 """
 
-import subprocess
 import threading
-import sys
 from typing import Optional
 from pathlib import Path
+import sys
 
-print("[claude-listen] MCP Server starting...", file=sys.stderr)
+# Import logger first - it initializes logging
+from .logger import get_logger, LOG_FILE
+log = get_logger("server")
+
+log.info("MCP Server starting...")
 
 from mcp.server.fastmcp import FastMCP
-print("[claude-listen] FastMCP imported", file=sys.stderr)
+log.debug("FastMCP imported")
 
 from .simple_ptt import SimplePTTRecorder, get_simple_ptt, destroy_simple_ptt
-print("[claude-listen] simple_ptt imported", file=sys.stderr)
+log.debug("simple_ptt imported")
 
 from .ptt_controller import (
     PTTController, PTTConfig, PTTState,
     get_ptt_controller, create_ptt_controller, destroy_ptt_controller
 )
-print("[claude-listen] ptt_controller imported", file=sys.stderr)
+log.debug("ptt_controller imported")
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from shared.coordination import signal_stop_speaking
-print("[claude-listen] shared.coordination imported", file=sys.stderr)
+log.debug("shared.coordination imported")
 
 mcp = FastMCP("claude-listen")
-print("[claude-listen] FastMCP instance created", file=sys.stderr)
+log.info(f"FastMCP instance created - logs at {LOG_FILE}")
 
 # State
 _transcription_ready = threading.Event()
@@ -48,7 +53,7 @@ _current_status: str = "ready"  # ready, recording, transcribing
 def _on_transcription_ready(text: str) -> None:
     """Callback when transcription is ready."""
     global _last_transcription, _current_status
-    print(f"[claude-listen] Transcription ready: {text[:50]}...", file=sys.stderr)
+    log.info(f"Transcription ready: {text[:50]}...")
     _last_transcription = text
     _current_status = "ready"
     _transcription_ready.set()
@@ -57,23 +62,22 @@ def _on_transcription_ready(text: str) -> None:
 def _ptt_start_recording() -> None:
     """Called when PTT key pressed - start recording."""
     global _current_status
-    print("[claude-listen] _ptt_start_recording callback triggered", file=sys.stderr)
-    # Stop any TTS playback immediately (afplay is used by claude-say)
-    subprocess.run(["pkill", "-9", "afplay"], capture_output=True)
+    log.info("_ptt_start_recording callback triggered")
+    signal_stop_speaking()  # Stop any TTS
     _current_status = "recording"
     recorder = get_simple_ptt(on_transcription_ready=_on_transcription_ready)
     recorder.start()
-    print("[claude-listen] Recording started via callback", file=sys.stderr)
+    log.info("Recording started via PTT callback")
 
 
 def _ptt_stop_recording() -> None:
     """Called when PTT key pressed again - stop and transcribe."""
     global _current_status
-    print("[claude-listen] _ptt_stop_recording callback triggered", file=sys.stderr)
+    log.info("_ptt_stop_recording callback triggered")
     _current_status = "transcribing"
     recorder = get_simple_ptt()
     recorder.stop()
-    print("[claude-listen] Recording stopped, transcription in progress", file=sys.stderr)
+    log.info("Recording stopped, transcription in progress")
 
 
 @mcp.tool()
@@ -95,16 +99,16 @@ def start_ptt_mode(key: str = "cmd_r") -> str:
     Returns:
         Confirmation message
     """
-    print(f"[claude-listen] start_ptt_mode called with key={key}", file=sys.stderr)
+    log.info(f"start_ptt_mode called with key={key}")
 
     try:
         existing = get_ptt_controller()
         if existing is not None and existing.is_active:
             msg = f"PTT mode already active (state: {existing.state.value})"
-            print(f"[claude-listen] {msg}", file=sys.stderr)
+            log.info(msg)
             return msg
 
-        print(f"[claude-listen] Creating PTT controller with key={key}", file=sys.stderr)
+        log.info(f"Creating PTT controller with key={key}")
         config = PTTConfig(
             key=key,
             on_start_recording=_ptt_start_recording,
@@ -112,17 +116,15 @@ def start_ptt_mode(key: str = "cmd_r") -> str:
         )
 
         controller = create_ptt_controller(config)
-        print("[claude-listen] PTT controller created, starting...", file=sys.stderr)
+        log.info("PTT controller created, starting...")
         controller.start()
 
         msg = f"PTT mode activated. Press {key.replace('_', ' ').title()} to toggle recording."
-        print(f"[claude-listen] {msg}", file=sys.stderr)
+        log.info(msg)
         return msg
 
     except Exception as e:
-        print(f"[claude-listen] ERROR starting PTT mode: {e}", file=sys.stderr)
-        import traceback
-        traceback.print_exc(file=sys.stderr)
+        log.error(f"ERROR starting PTT mode: {e}", exc_info=True)
         return f"Error starting PTT mode: {e}"
 
 
@@ -137,20 +139,20 @@ def stop_ptt_mode() -> str:
     Returns:
         Summary of PTT session
     """
-    print("[claude-listen] stop_ptt_mode called", file=sys.stderr)
+    log.info("stop_ptt_mode called")
 
     controller = get_ptt_controller()
     if controller is None or not controller.is_active:
-        print("[claude-listen] PTT mode not active, nothing to stop", file=sys.stderr)
+        log.info("PTT mode not active, nothing to stop")
         return "PTT mode not active."
 
-    print("[claude-listen] Destroying PTT controller...", file=sys.stderr)
+    log.info("Destroying PTT controller...")
     destroy_ptt_controller()
 
-    print("[claude-listen] Destroying SimplePTT (releases mic)...", file=sys.stderr)
+    log.info("Destroying SimplePTT (releases mic)...")
     destroy_simple_ptt()
 
-    print("[claude-listen] PTT mode fully deactivated, mic released", file=sys.stderr)
+    log.info("PTT mode fully deactivated, mic released")
     return "PTT mode deactivated. Microphone released."
 
 
@@ -216,6 +218,6 @@ def get_segment_transcription(wait: bool = True, timeout: float = 120.0) -> str:
 
 
 if __name__ == "__main__":
-    print("[claude-listen] Starting MCP server via mcp.run()...", file=sys.stderr)
-    print("[claude-listen] Available tools: start_ptt_mode, stop_ptt_mode, get_ptt_status, get_segment_transcription", file=sys.stderr)
+    log.info("Starting MCP server via mcp.run()...")
+    log.info("Available tools: start_ptt_mode, stop_ptt_mode, get_ptt_status, get_segment_transcription")
     mcp.run()

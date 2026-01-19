@@ -10,20 +10,23 @@ the app running this code (Terminal, Cursor, VS Code, etc.)
 """
 
 import threading
-import sys
 from typing import Optional, Callable
 from enum import Enum
 from dataclasses import dataclass
 
-print("[PTTController] Loading module...", file=sys.stderr)
+from .logger import get_logger
+
+log = get_logger("ptt_controller")
+
+log.info("Loading module...")
 
 try:
     from pynput import keyboard
     PYNPUT_AVAILABLE = True
-    print("[PTTController] pynput loaded successfully", file=sys.stderr)
+    log.info("pynput loaded successfully")
 except ImportError as e:
     PYNPUT_AVAILABLE = False
-    print(f"[PTTController] WARNING: pynput not installed. PTT will not work. Error: {e}", file=sys.stderr)
+    log.warning(f"pynput not installed. PTT will not work. Error: {e}")
 
 
 class PTTState(Enum):
@@ -97,10 +100,10 @@ class PTTController:
         Args:
             config: PTT configuration with callbacks
         """
-        print(f"[PTTController] Initializing with config key: {config.key if config else 'default'}", file=sys.stderr)
+        log.info(f"Initializing with config key: {config.key if config else 'default'}")
 
         if not PYNPUT_AVAILABLE:
-            print("[PTTController] ERROR: pynput not available!", file=sys.stderr)
+            log.error("pynput not available!")
             raise RuntimeError("pynput is required for PTT. Install with: pip install pynput")
 
         self.config = config or PTTConfig()
@@ -116,13 +119,13 @@ class PTTController:
         self._modifier_key, self._char_key = parse_combo_key(self.config.key)
         self._is_combo = self._char_key is not None
 
-        print(f"[PTTController] Parsed key: modifier={self._modifier_key}, char={self._char_key}, is_combo={self._is_combo}", file=sys.stderr)
+        log.debug(f"Parsed key: modifier={self._modifier_key}, char={self._char_key}, is_combo={self._is_combo}")
 
         if self._modifier_key is None:
-            print(f"[PTTController] ERROR: Unknown key: {self.config.key}", file=sys.stderr)
+            log.error(f"Unknown key: {self.config.key}")
             raise ValueError(f"Unknown key: {self.config.key}. Available: {list(KEY_MAP.keys())} or combos like 'cmd_r+m'")
 
-        print("[PTTController] Initialized successfully", file=sys.stderr)
+        log.info("Initialized successfully")
 
     @property
     def state(self) -> PTTState:
@@ -171,17 +174,17 @@ class PTTController:
         """Handle key press event."""
         # Log all key presses for debugging (only when not combo triggered to reduce noise)
         if not self._combo_triggered:
-            print(f"[PTTController] Key press detected: {key}", file=sys.stderr)
+            log.debug(f"Key press detected: {key}")
 
         # Track this key
         if key == self._modifier_key:
             self._pressed_keys.add(self._modifier_key)
-            print(f"[PTTController] Modifier key pressed: {key}", file=sys.stderr)
+            log.debug(f"Modifier key pressed: {key}")
         else:
             char = self._get_key_char(key)
             if char and char == self._char_key:
                 self._pressed_keys.add(char)
-                print(f"[PTTController] Char key pressed: {char}", file=sys.stderr)
+                log.debug(f"Char key pressed: {char}")
 
         # Check if combo is complete
         if not self._check_combo():
@@ -192,32 +195,32 @@ class PTTController:
             return
         self._combo_triggered = True
 
-        print(f"[PTTController] Combo triggered! State: {self._state.value}", file=sys.stderr)
+        log.info(f"Combo triggered! State: {self._state.value}")
 
         with self._lock:
             if self._state == PTTState.LISTENING:
                 # Start recording
                 self._set_state(PTTState.RECORDING)
-                print(f"🎤 PTT: Recording started", file=sys.stderr)
+                log.info("🎤 PTT: Recording started")
 
                 if self.config.on_start_recording:
                     try:
-                        print("[PTTController] Calling on_start_recording callback", file=sys.stderr)
+                        log.debug("Calling on_start_recording callback")
                         self.config.on_start_recording()
                     except Exception as e:
-                        print(f"[PTTController] Error in start recording callback: {e}", file=sys.stderr)
+                        log.error(f"Error in start recording callback: {e}")
 
             elif self._state == PTTState.RECORDING:
                 # Stop recording
                 self._set_state(PTTState.LISTENING)
-                print(f"⏹️  PTT: Recording stopped", file=sys.stderr)
+                log.info("⏹️ PTT: Recording stopped")
 
                 if self.config.on_stop_recording:
                     try:
-                        print("[PTTController] Calling on_stop_recording callback", file=sys.stderr)
+                        log.debug("Calling on_stop_recording callback")
                         self.config.on_stop_recording()
                     except Exception as e:
-                        print(f"[PTTController] Error in stop recording callback: {e}", file=sys.stderr)
+                        log.error(f"Error in stop recording callback: {e}")
 
     def _on_key_release(self, key) -> None:
         """Handle key release event - reset combo trigger."""
@@ -235,53 +238,52 @@ class PTTController:
 
     def start(self) -> None:
         """Start listening for PTT hotkey."""
-        print("[PTTController] start() called", file=sys.stderr)
+        log.info("start() called")
 
         if self._listener is not None:
-            print("[PTTController] Listener already exists, PTT already active", file=sys.stderr)
+            log.debug("Listener already exists, PTT already active")
             return
 
         self._set_state(PTTState.LISTENING)
 
-        print("[PTTController] Creating keyboard.Listener...", file=sys.stderr)
+        log.info("Creating keyboard.Listener...")
         try:
             self._listener = keyboard.Listener(
                 on_press=self._on_key_press,
                 on_release=self._on_key_release
             )
             self._listener.start()
-            print(f"[PTTController] Keyboard listener started (thread alive: {self._listener.is_alive()})", file=sys.stderr)
+            log.info(f"Keyboard listener started (thread alive: {self._listener.is_alive()})")
         except Exception as e:
-            print(f"[PTTController] ERROR: Failed to start keyboard listener: {e}", file=sys.stderr)
+            log.error(f"Failed to start keyboard listener: {e}")
             raise
 
         key_name = self.config.key.replace("_", " ").title()
-        print(f"🎯 PTT mode active - Press {key_name} to toggle recording", file=sys.stderr)
-        print(f"[PTTController] Waiting for key: {key_name} (modifier={self._modifier_key})", file=sys.stderr)
+        log.info(f"🎯 PTT mode active - Press {key_name} to toggle recording")
+        log.debug(f"Waiting for key: {key_name} (modifier={self._modifier_key})")
 
     def stop(self) -> None:
         """Stop listening for PTT hotkey."""
-        print("[PTTController] stop() called", file=sys.stderr)
+        log.info("stop() called")
 
         if self._listener is None:
-            print("[PTTController] No listener to stop", file=sys.stderr)
+            log.debug("No listener to stop")
             return
 
         # If recording, stop it first
         if self._state == PTTState.RECORDING and self.config.on_stop_recording:
-            print("[PTTController] Was recording, calling stop callback", file=sys.stderr)
+            log.info("Was recording, calling stop callback")
             try:
                 self.config.on_stop_recording()
             except Exception as e:
-                print(f"[PTTController] Error stopping recording: {e}", file=sys.stderr)
+                log.error(f"Error stopping recording: {e}")
 
-        print("[PTTController] Stopping keyboard listener...", file=sys.stderr)
+        log.info("Stopping keyboard listener...")
         self._listener.stop()
         self._listener = None
         self._set_state(PTTState.IDLE)
 
-        print("🛑 PTT mode deactivated", file=sys.stderr)
-        print("[PTTController] PTT controller stopped", file=sys.stderr)
+        log.info("🛑 PTT mode deactivated")
 
     def force_stop_recording(self) -> None:
         """Force stop recording without stopping PTT mode."""

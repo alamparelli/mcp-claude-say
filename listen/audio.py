@@ -12,7 +12,10 @@ import sounddevice as sd
 from typing import Callable, Optional
 import threading
 from queue import Queue
-import sys
+
+from .logger import get_logger
+
+log = get_logger("audio")
 
 
 class AudioCapture:
@@ -41,7 +44,7 @@ class AudioCapture:
         self._audio_queue: Queue = Queue()
         self._buffer: list[np.ndarray] = []
         self._lock = threading.Lock()
-        print("[AudioCapture] Initialized", file=sys.stderr)
+        log.info("AudioCapture initialized")
 
     def __del__(self):
         """Ensure stream is closed on garbage collection."""
@@ -60,15 +63,15 @@ class AudioCapture:
                 except Exception:
                     pass  # May already be closed
                 self._stream = None
-                print("[AudioCapture] Stream force-closed, mic released", file=sys.stderr)
+                log.info("Stream force-closed, mic released")
         except Exception as e:
-            print(f"[AudioCapture] Error in _force_close_stream: {e}", file=sys.stderr)
+            log.error(f"Error in _force_close_stream: {e}")
 
     def _audio_callback(self, indata: np.ndarray, frames: int,
                         time_info: dict, status: sd.CallbackFlags) -> None:
         """Called by sounddevice for each audio block."""
         if status:
-            print(f"[AudioCapture] Audio status: {status}", file=sys.stderr)
+            log.warning(f"Audio callback status: {status}")
 
         # Copy data to avoid issues with buffer reuse
         audio_chunk = indata.copy().flatten()
@@ -87,10 +90,10 @@ class AudioCapture:
     def start(self) -> None:
         """Start capturing audio from microphone."""
         if self._is_running:
-            print("[AudioCapture] Already running, skipping start", file=sys.stderr)
+            log.debug("Already running, skipping start")
             return
 
-        print("[AudioCapture] Starting audio capture...", file=sys.stderr)
+        log.info("Starting audio capture...")
         self._is_running = True
         self._buffer = []
 
@@ -103,9 +106,9 @@ class AudioCapture:
                 callback=self._audio_callback
             )
             self._stream.start()
-            print("[AudioCapture] Stream started, mic is now active (orange dot)", file=sys.stderr)
+            log.info("Stream started - mic is now active (orange dot)")
         except Exception as e:
-            print(f"[AudioCapture] Failed to start stream: {e}", file=sys.stderr)
+            log.error(f"Failed to start stream: {e}")
             self._is_running = False
             self._force_close_stream()
             raise
@@ -117,15 +120,15 @@ class AudioCapture:
         This MUST be called to turn off the macOS mic indicator.
         """
         if not self._is_running:
-            print("[AudioCapture] Not running, skipping stop", file=sys.stderr)
+            log.debug("Not running, skipping stop")
             return
 
-        print("[AudioCapture] Stopping audio capture...", file=sys.stderr)
+        log.info("Stopping audio capture...")
         self._is_running = False
 
         # CRITICAL: Fully close the stream to release mic
         self._force_close_stream()
-        print("[AudioCapture] Audio capture stopped, mic should be released", file=sys.stderr)
+        log.info("Audio capture stopped, mic released")
 
     def get_buffer(self) -> np.ndarray:
         """
@@ -204,7 +207,7 @@ def destroy_capture() -> None:
     """
     global _capture
     if _capture is not None:
-        print("[AudioCapture] Destroying global capture instance", file=sys.stderr)
+        log.info("Destroying global capture instance")
         _capture.stop()
         _capture = None
-        print("[AudioCapture] Global capture destroyed", file=sys.stderr)
+        log.info("Global capture destroyed")

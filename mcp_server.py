@@ -14,13 +14,30 @@ import base64
 import urllib.request
 import json
 from queue import Queue, Empty
+from pathlib import Path
 from mcp.server.fastmcp import FastMCP
+
+# Signal file for stop communication (shared with claude-listen)
+STOP_SIGNAL_FILE = Path("/tmp/claude-voice-stop")
+
+
+def check_and_clear_stop_signal() -> bool:
+    """Check if stop signal exists and clear it. Returns True if signal was present."""
+    if STOP_SIGNAL_FILE.exists():
+        try:
+            STOP_SIGNAL_FILE.unlink()
+        except:
+            pass
+        return True
+    return False
+
 
 mcp = FastMCP("claude-say")
 
 # Global state
 speech_queue: Queue = Queue()
 current_process: subprocess.Popen | None = None
+current_afplay: subprocess.Popen | None = None  # Tracks afplay for Google TTS
 process_lock = threading.Lock()
 worker_thread: threading.Thread | None = None
 
@@ -114,6 +131,7 @@ def speak_with_google(text: str, blocking: bool = True) -> bool:
     Speak using Google Cloud Text-to-Speech API.
     Returns True if successful, False on error.
     """
+    global current_afplay
     if not GOOGLE_CLOUD_API_KEY:
         return False
 
@@ -151,7 +169,20 @@ def speak_with_google(text: str, blocking: bool = True) -> bool:
 
         try:
             if blocking:
-                subprocess.run(["afplay", temp_path], check=True)
+                with process_lock:
+                    current_afplay = subprocess.Popen(
+                        ["afplay", temp_path],
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL
+                    )
+                # Poll for completion while checking stop signal
+                while current_afplay.poll() is None:
+                    if check_and_clear_stop_signal():
+                        current_afplay.terminate()
+                        break
+                    time.sleep(0.05)  # Check every 50ms
+                with process_lock:
+                    current_afplay = None
             else:
                 subprocess.Popen(
                     ["afplay", temp_path],
@@ -236,7 +267,12 @@ def speech_worker():
                 stderr=subprocess.DEVNULL
             )
 
-        current_process.wait()
+        # Poll for completion while checking stop signal
+        while current_process.poll() is None:
+            if check_and_clear_stop_signal():
+                current_process.terminate()
+                break
+            time.sleep(0.05)  # Check every 50ms
 
         with process_lock:
             current_process = None
@@ -341,7 +377,7 @@ def stop_speaking() -> str:
     Returns:
         Confirmation of stop
     """
-    global current_process
+    global current_process, current_afplay
 
     # Clear the queue
     items_cleared = 0
@@ -356,12 +392,22 @@ def stop_speaking() -> str:
     if USE_CHATTERBOX:
         stop_chatterbox()
 
-    # Stop macOS say process
+    stopped = False
     with process_lock:
+        # Stop Google TTS afplay process
+        if current_afplay and current_afplay.poll() is None:
+            current_afplay.terminate()
+            current_afplay = None
+            stopped = True
+
+        # Stop macOS say process
         if current_process and current_process.poll() is None:
             current_process.terminate()
             current_process = None
-            return f"Stopped. {items_cleared} message(s) cleared from queue."
+            stopped = True
+
+    if stopped:
+        return f"Stopped. {items_cleared} message(s) cleared from queue."
 
     return f"Nothing playing. {items_cleared} message(s) cleared from queue."
 
