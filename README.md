@@ -11,28 +11,82 @@ Voice interaction MCP servers for Claude Code. Includes both Text-to-Speech (TTS
 - **Full conversation mode** - Complete voice loop with `/conversation`
 - **Fast local STT** - Uses Parakeet MLX (optimized for Apple Silicon)
 - **Multilingual** - Speaks and understands multiple languages
-- **Lightweight** - Uses native macOS speech synthesis, no external APIs for TTS
+- **Lightweight** - Uses native macOS speech synthesis by default, no external APIs
 
-## Optional: Neural TTS (Chatterbox)
+## TTS Backend Options
 
-For higher-quality, natural-sounding speech, you can optionally enable **Chatterbox** neural TTS. This replaces the robotic macOS `say` command with ElevenLabs-quality voice synthesis that runs 100% locally.
+Choose your TTS backend based on your needs:
 
-### Setup
+| Backend | Quality | Storage | Latency | Free Tier |
+|---------|---------|---------|---------|-----------|
+| **macOS** (default) | Basic | 0 | Instant | Unlimited |
+| **Google Cloud** | Good | 0 | ~0.5s | 1M chars/mo |
+| **Chatterbox** | Excellent | 11GB | ~0.3s | Unlimited |
+
+### Option 1: macOS (Default)
+
+No setup required. Uses the native `say` command. Voice is robotic but works everywhere.
+
+### Option 2: Google Cloud TTS (Recommended)
+
+Natural-sounding Neural2 voices with zero storage footprint. 1M characters/month free (~10K sentences).
+
+**Setup:**
+
+1. Create a Google Cloud project at [console.cloud.google.com](https://console.cloud.google.com)
+2. Enable the [Text-to-Speech API](https://console.cloud.google.com/apis/library/texttospeech.googleapis.com)
+3. Create an API key at [APIs & Services > Credentials](https://console.cloud.google.com/apis/credentials)
+
+**Configure:**
+
+Add to your shell profile (`~/.zshrc` or `~/.bashrc`):
+
+```bash
+export TTS_BACKEND="google"
+export GOOGLE_CLOUD_API_KEY="your-api-key-here"
+# Optional: change voice (default: en-US-Neural2-F)
+export GOOGLE_VOICE="en-US-Neural2-D"  # Male voice
+```
+
+Then restart Claude Code or run `source ~/.zshrc`.
+
+**Available Voices:**
+
+| Voice | Description |
+|-------|-------------|
+| `en-US-Neural2-F` | Female (default) |
+| `en-US-Neural2-H` | Female, warm |
+| `en-US-Neural2-D` | Male |
+| `en-US-Neural2-J` | Male, casual |
+
+See [all voices](https://cloud.google.com/text-to-speech/docs/voices) for more options.
+
+### Option 3: Chatterbox (Local Neural TTS)
+
+Highest quality, runs 100% locally, but requires 11GB storage for model weights.
+
+**Setup:**
 
 ```bash
 # Requires Python 3.11 (Chatterbox doesn't support 3.12+)
-python3.11 -m venv venv-tts
-source venv-tts/bin/activate
+python3.11 -m venv ~/.mcp-claude-say/venv-tts
+source ~/.mcp-claude-say/venv-tts/bin/activate
 pip install chatterbox-tts uvicorn fastapi torchaudio
 
 # Add a voice sample (5-10 seconds of clear speech, 24kHz WAV)
-mkdir -p voices
+mkdir -p ~/.mcp-claude-say/voices
 # Copy your sample to voices/female_voice.wav
 ```
 
-### Usage
+**Configure:**
 
-**Important:** The Chatterbox service must be started manually before use:
+```bash
+export TTS_BACKEND="chatterbox"
+```
+
+**Usage:**
+
+The Chatterbox service must be started manually:
 
 ```bash
 # Start the service (~5-10 sec to load model)
@@ -45,17 +99,13 @@ curl http://127.0.0.1:8123/health
 ~/.mcp-claude-say/stop_tts_service.sh
 ```
 
-If the service isn't running, TTS automatically falls back to macOS `say` command.
+| Factor | Impact |
+|--------|--------|
+| Storage | ~11GB for model weights |
+| RAM | ~1.5GB when running |
+| First load | 5-10 seconds |
 
-### Why Manual Start?
-
-| Factor | Auto-start | Manual |
-|--------|-----------|--------|
-| RAM usage | ~1.5GB constant | 0 when off |
-| Startup delay | None | 5-10 sec |
-| Battery | Slight drain | None when off |
-
-For occasional voice conversations, manual start is recommended.
+If the service isn't running, TTS falls back to macOS `say`.
 
 ## One-Line Installation
 

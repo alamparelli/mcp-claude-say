@@ -9,6 +9,8 @@ import subprocess
 import threading
 import os
 import time
+import tempfile
+import base64
 import urllib.request
 import json
 from queue import Queue, Empty
@@ -22,10 +24,19 @@ current_process: subprocess.Popen | None = None
 process_lock = threading.Lock()
 worker_thread: threading.Thread | None = None
 
-# TTS Service configuration (env-configurable)
+# TTS Backend selection (env-configurable)
+# Options: "chatterbox" (local neural, 11GB), "google" (cloud, needs API key), "macos" (built-in)
+TTS_BACKEND = os.getenv("TTS_BACKEND", "macos").lower()
+
+# Chatterbox configuration (for TTS_BACKEND=chatterbox)
 CHATTERBOX_URL = os.getenv("CHATTERBOX_URL", "http://127.0.0.1:8123")
-USE_CHATTERBOX = os.getenv("USE_CHATTERBOX", "1") == "1"
+USE_CHATTERBOX = TTS_BACKEND == "chatterbox" or os.getenv("USE_CHATTERBOX", "0") == "1"
 DEFAULT_VOICE = os.getenv("DEFAULT_VOICE", "female_voice")
+
+# Google Cloud TTS configuration (for TTS_BACKEND=google)
+GOOGLE_CLOUD_API_KEY = os.getenv("GOOGLE_CLOUD_API_KEY", "")
+GOOGLE_VOICE = os.getenv("GOOGLE_VOICE", "en-US-Neural2-F")  # Neural2 voices are in free tier
+GOOGLE_LANGUAGE = os.getenv("GOOGLE_LANGUAGE", "en-US")
 
 # Health check cache to avoid blocking worker thread
 _last_health_check = 0.0
@@ -93,6 +104,74 @@ def stop_chatterbox() -> bool:
         return False
 
 
+def google_tts_available() -> bool:
+    """Check if Google Cloud TTS is configured."""
+    return bool(GOOGLE_CLOUD_API_KEY) and TTS_BACKEND == "google"
+
+
+def speak_with_google(text: str, blocking: bool = True) -> bool:
+    """
+    Speak using Google Cloud Text-to-Speech API.
+    Returns True if successful, False on error.
+    """
+    if not GOOGLE_CLOUD_API_KEY:
+        return False
+
+    try:
+        # Build the API request
+        url = f"https://texttospeech.googleapis.com/v1/text:synthesize?key={GOOGLE_CLOUD_API_KEY}"
+        payload = {
+            "input": {"text": text},
+            "voice": {
+                "languageCode": GOOGLE_LANGUAGE,
+                "name": GOOGLE_VOICE
+            },
+            "audioConfig": {
+                "audioEncoding": "MP3",
+                "speakingRate": 1.0
+            }
+        }
+        data = json.dumps(payload).encode("utf-8")
+        req = urllib.request.Request(
+            url,
+            data=data,
+            headers={"Content-Type": "application/json"},
+            method="POST"
+        )
+        response = urllib.request.urlopen(req, timeout=30)
+        result = json.loads(response.read().decode())
+
+        # Decode the audio content
+        audio_content = base64.b64decode(result["audioContent"])
+
+        # Save to temp file and play
+        with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False, prefix="google_tts_") as f:
+            f.write(audio_content)
+            temp_path = f.name
+
+        try:
+            if blocking:
+                subprocess.run(["afplay", temp_path], check=True)
+            else:
+                subprocess.Popen(
+                    ["afplay", temp_path],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL
+                )
+        finally:
+            if blocking:
+                try:
+                    os.unlink(temp_path)
+                except:
+                    pass
+            # For non-blocking, file cleanup happens when afplay finishes (not ideal but acceptable)
+
+        return True
+    except Exception as e:
+        # Log error but don't crash - will fallback to macOS
+        return False
+
+
 def play_ready_sound():
     """Play a short notification sound to indicate ready to listen."""
     if os.path.exists(READY_SOUND):
@@ -127,11 +206,18 @@ def speech_worker():
             break
 
         text, voice, rate, use_neural = item
+        # Remove macOS-specific silence markup for neural backends
+        clean_text = text.replace(f" [[slnc {TRAILING_SILENCE_MS}]]", "")
 
-        # Try Chatterbox for neural TTS (if enabled and no specific voice requested)
+        # Try Google Cloud TTS (if configured)
+        if use_neural and google_tts_available():
+            if speak_with_google(clean_text, blocking=True):
+                speech_queue.task_done()
+                continue
+            # Fall through to other backends if Google fails
+
+        # Try Chatterbox for neural TTS (if enabled)
         if use_neural and USE_CHATTERBOX and chatterbox_available():
-            # Remove macOS-specific silence markup for Chatterbox
-            clean_text = text.replace(f" [[slnc {TRAILING_SILENCE_MS}]]", "")
             if speak_with_chatterbox(clean_text, blocking=True):
                 speech_queue.task_done()
                 continue
@@ -179,8 +265,8 @@ def speak(text: str, voice: str | None = None, speed: float = 1.0) -> str:
     Args:
         text: The text to speak
         voice: Voice to use. Options:
-               - None or "chatterbox": Neural TTS (Chatterbox, natural sounding)
-               - "Samantha": macOS female voice (fallback)
+               - None: Use configured TTS_BACKEND (google, chatterbox, or macos)
+               - "Samantha": macOS female voice
                - Any other macOS voice name
         speed: Speech speed (0.5 = slow, 1.0 = normal, 2.0 = fast)
                Note: speed only applies to macOS voices; neural TTS uses natural pacing.
@@ -191,8 +277,8 @@ def speak(text: str, voice: str | None = None, speed: float = 1.0) -> str:
     ensure_worker_running()
     rate = int(speed * 175)  # 175 words/min = normal speed
 
-    # Determine if we should use neural TTS
-    use_neural = voice is None or voice.lower() == "chatterbox"
+    # Determine if we should use neural TTS (default backend or explicit request)
+    use_neural = voice is None or voice.lower() in ("chatterbox", "google")
     macos_voice = None if use_neural else voice
 
     # Add trailing silence so the last word is fully heard (for macOS voices)
@@ -200,7 +286,8 @@ def speak(text: str, voice: str | None = None, speed: float = 1.0) -> str:
 
     speech_queue.put((text_with_silence, macos_voice, rate, use_neural))
 
-    return "Queued (neural TTS)" if use_neural else f"Queued ({voice})"
+    backend_name = TTS_BACKEND if use_neural else voice
+    return f"Queued ({backend_name})"
 
 
 @mcp.tool()
@@ -212,8 +299,8 @@ def speak_and_wait(text: str, voice: str | None = None, speed: float = 1.1) -> s
     Args:
         text: The text to speak
         voice: Voice to use. Options:
-               - None or "chatterbox": Neural TTS (Chatterbox, natural sounding)
-               - "Samantha": macOS female voice (fallback)
+               - None: Use configured TTS_BACKEND (google, chatterbox, or macos)
+               - "Samantha": macOS female voice
                - Any other macOS voice name
         speed: Speech speed (0.5 = slow, 1.0 = normal, 1.1 = default, 2.0 = fast)
                Note: speed only applies to macOS voices; neural TTS uses natural pacing.
@@ -224,8 +311,8 @@ def speak_and_wait(text: str, voice: str | None = None, speed: float = 1.1) -> s
     ensure_worker_running()
     rate = int(speed * 175)  # 175 words/min = normal speed
 
-    # Determine if we should use neural TTS
-    use_neural = voice is None or voice.lower() == "chatterbox"
+    # Determine if we should use neural TTS (default backend or explicit request)
+    use_neural = voice is None or voice.lower() in ("chatterbox", "google")
     macos_voice = None if use_neural else voice
 
     # Add trailing silence so the last word is fully heard (for macOS voices)
@@ -242,7 +329,8 @@ def speak_and_wait(text: str, voice: str | None = None, speed: float = 1.1) -> s
     # Play ready sound to indicate listening is active
     play_ready_sound()
 
-    return "Speech completed (neural TTS)" if use_neural else f"Speech completed ({voice})"
+    backend_name = TTS_BACKEND if use_neural else voice
+    return f"Speech completed ({backend_name})"
 
 
 @mcp.tool()
