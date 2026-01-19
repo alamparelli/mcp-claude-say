@@ -89,9 +89,9 @@ def start_ptt_mode(key: str = "cmd_r") -> str:
     - Press the hotkey to START recording
     - Press again to STOP recording and transcribe
 
-    Available keys: cmd_r (Right Command), cmd_l, alt_r, alt_l, ctrl_r, ctrl_l,
+    Available keys: cmd_r (Right Command - default), cmd_l, alt_r, alt_l, ctrl_r, ctrl_l,
                    shift_r, shift_l, f13, f14, f15, space
-    Combos supported: cmd_r+m, ctrl_l+r, etc.
+    Combos supported: cmd_l+s, cmd_r+m, ctrl_l+r, etc.
 
     Args:
         key: The key to use for PTT toggle (default: cmd_r = Right Command)
@@ -173,6 +173,46 @@ def get_ptt_status() -> str:
 
 
 @mcp.tool()
+def interrupt_conversation() -> str:
+    """
+    Interrupt conversation mode cleanly.
+
+    Call this when typed input arrives during voice conversation.
+    This will:
+    1. Stop any TTS speech immediately
+    2. Stop PTT recording if active
+    3. Release the microphone
+    4. Clear pending transcription states
+
+    After calling this, voice mode is fully stopped.
+    User must explicitly restart voice mode if desired.
+
+    Returns:
+        Confirmation message
+    """
+    global _current_status, _last_transcription
+
+    log.info("Conversation interrupted by typed input")
+
+    # 1. Signal TTS to stop (backend-agnostic)
+    signal_stop_speaking()
+
+    # 2. Stop PTT and release mic
+    controller = get_ptt_controller()
+    if controller is not None and controller.is_active:
+        log.info("Stopping PTT controller...")
+        destroy_ptt_controller()
+        destroy_simple_ptt()
+
+    # 3. Clear pending transcription states
+    _current_status = "ready"
+    _transcription_ready.set()  # Unblock any waiting calls
+
+    log.info("Conversation interrupted - system idle")
+    return "Conversation interrupted. Voice mode stopped."
+
+
+@mcp.tool()
 def get_segment_transcription(wait: bool = True, timeout: float = 120.0) -> str:
     """
     Get the latest segment transcription.
@@ -219,5 +259,5 @@ def get_segment_transcription(wait: bool = True, timeout: float = 120.0) -> str:
 
 if __name__ == "__main__":
     log.info("Starting MCP server via mcp.run()...")
-    log.info("Available tools: start_ptt_mode, stop_ptt_mode, get_ptt_status, get_segment_transcription")
+    log.info("Available tools: start_ptt_mode, stop_ptt_mode, get_ptt_status, get_segment_transcription, interrupt_conversation")
     mcp.run()

@@ -26,10 +26,11 @@ listen/
 ### MCP Tools (claude-listen)
 | Tool | Description |
 |------|-------------|
-| `start_ptt_mode(key?)` | Start PTT (default: cmd_l+s) |
+| `start_ptt_mode(key?)` | Start PTT (default: cmd_r) |
 | `stop_ptt_mode()` | Stop PTT mode |
 | `get_ptt_status()` | Get current status (ready/recording/transcribing) |
 | `get_segment_transcription(wait?, timeout?)` | Get transcription (default timeout: 120s) |
+| `interrupt_conversation()` | Stop TTS + PTT cleanly (call on typed input) |
 
 ### Status Feedback
 `get_segment_transcription()` returns status messages to help identify the current state:
@@ -68,7 +69,7 @@ After running, restart Claude Code to test changes.
 | `skill/SKILL.md` | /speak skill |
 
 ## Default PTT Key
-**Left Command + S** (`cmd_l+s`)
+**Right Command** (`cmd_r`)
 
 ## Dependencies
 - mcp>=1.0.0
@@ -81,5 +82,5 @@ After running, restart Claude Code to test changes.
 After `test-pipeline.sh`:
 1. Restart Claude Code
 2. Run `/conversation`
-3. Press Left Cmd + S to record
+3. Press Right Command to record
 4. Press again to stop and transcribe
