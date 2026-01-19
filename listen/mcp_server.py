@@ -12,6 +12,7 @@ Simple operation:
 DEBUG: Logs go to stderr (visible in Claude Code's MCP console)
 """
 
+import subprocess
 import threading
 import sys
 from typing import Optional
@@ -57,7 +58,8 @@ def _ptt_start_recording() -> None:
     """Called when PTT key pressed - start recording."""
     global _current_status
     print("[claude-listen] _ptt_start_recording callback triggered", file=sys.stderr)
-    signal_stop_speaking()  # Stop any TTS
+    # Stop any TTS playback immediately (afplay is used by claude-say)
+    subprocess.run(["pkill", "-9", "afplay"], capture_output=True)
     _current_status = "recording"
     recorder = get_simple_ptt(on_transcription_ready=_on_transcription_ready)
     recorder.start()
