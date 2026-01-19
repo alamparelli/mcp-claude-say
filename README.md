@@ -29,7 +29,16 @@ No setup required. Uses the native `say` command. Voice is robotic but works eve
 
 ### Option 2: Google Cloud TTS (Recommended)
 
-Natural-sounding Neural2 voices with zero storage footprint. 1M characters/month free (~10K sentences).
+Natural-sounding voices with zero storage footprint.
+
+**Pricing Tiers:**
+
+| Tier | Quality | Price |
+|------|---------|-------|
+| Neural2 | Good | Free (1M chars/mo) |
+| Studio | Better | $0.16/1M chars |
+| Journey | Conversational | $0.30/1M chars |
+| Chirp3-HD | Best (Gemini) | $0.30/1M chars |
 
 **Setup:**
 
@@ -44,20 +53,23 @@ Add to your shell profile (`~/.zshrc` or `~/.bashrc`):
 ```bash
 export TTS_BACKEND="google"
 export GOOGLE_CLOUD_API_KEY="your-api-key-here"
-# Optional: change voice (default: en-US-Neural2-F)
-export GOOGLE_VOICE="en-US-Neural2-D"  # Male voice
+
+# Optional: change voice and language (defaults: en-US-Neural2-F, en-US)
+export GOOGLE_VOICE="en-GB-Chirp3-HD-Erinome"  # British female
+export GOOGLE_LANGUAGE="en-GB"
 ```
 
 Then restart Claude Code or run `source ~/.zshrc`.
 
-**Available Voices:**
+**Example Voices:**
 
-| Voice | Description |
-|-------|-------------|
-| `en-US-Neural2-F` | Female (default) |
-| `en-US-Neural2-H` | Female, warm |
-| `en-US-Neural2-D` | Male |
-| `en-US-Neural2-J` | Male, casual |
+| Voice | Tier | Description |
+|-------|------|-------------|
+| `en-US-Neural2-F` | Free | US female (default) |
+| `en-US-Journey-O` | Paid | US female, conversational |
+| `en-GB-Chirp3-HD-Erinome` | Paid | British female |
+| `en-GB-Chirp3-HD-Aoede` | Paid | British female |
+| `en-US-Neural2-D` | Free | US male |
 
 See [all voices](https://cloud.google.com/text-to-speech/docs/voices) for more options.
 
