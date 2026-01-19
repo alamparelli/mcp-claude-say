@@ -3,6 +3,9 @@ Simple Push-to-Talk Recorder - No VAD, just record and transcribe.
 
 Press key to start recording, press again to stop and transcribe.
 No automatic segmentation - captures everything between start/stop.
+
+IMPORTANT: This module must properly release the microphone when done
+to turn off the macOS orange mic indicator.
 """
 
 import numpy as np
@@ -10,11 +13,12 @@ import soundfile as sf
 import tempfile
 import os
 import threading
+import sys
 from typing import Optional, Callable
 from pathlib import Path
 from datetime import datetime
 
-from .audio import AudioCapture
+from .audio import AudioCapture, destroy_capture
 
 
 class SimplePTTRecorder:
@@ -22,6 +26,9 @@ class SimplePTTRecorder:
     Simple PTT recorder without VAD.
 
     Records continuously while active, transcribes on stop.
+
+    CRITICAL: Call destroy() when done to release the microphone
+    and turn off the macOS orange mic indicator.
     """
 
     def __init__(
@@ -36,6 +43,7 @@ class SimplePTTRecorder:
             output_dir: Directory to save recordings
             on_transcription_ready: Callback when transcription is done
         """
+        print("[SimplePTTRecorder] Initializing...", file=sys.stderr)
         self.output_dir = output_dir
         self.output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -47,6 +55,7 @@ class SimplePTTRecorder:
         self._last_transcription: Optional[str] = None
         self._last_audio_path: Optional[Path] = None
         self._lock = threading.Lock()
+        print("[SimplePTTRecorder] Initialized", file=sys.stderr)
 
     def _get_transcriber(self):
         """
@@ -101,14 +110,16 @@ class SimplePTTRecorder:
 
     def start(self) -> None:
         """Start recording audio."""
+        print("[SimplePTTRecorder] start() called", file=sys.stderr)
         with self._lock:
             if self._is_recording:
+                print("[SimplePTTRecorder] Already recording, skipping", file=sys.stderr)
                 return
 
             self._audio.clear_buffer()
             self._audio.start()
             self._is_recording = True
-            print("🎤 Recording started...")
+            print("🎤 Recording started...", file=sys.stderr)
 
     def stop(self) -> Optional[str]:
         """
@@ -117,37 +128,42 @@ class SimplePTTRecorder:
         Returns:
             Transcription text or None if no audio
         """
+        print("[SimplePTTRecorder] stop() called", file=sys.stderr)
         with self._lock:
             if not self._is_recording:
+                print("[SimplePTTRecorder] Not recording, skipping stop", file=sys.stderr)
                 return None
 
             self._is_recording = False
 
-            # Get recorded audio
+            # Get recorded audio BEFORE stopping (to capture buffer)
             audio = self._audio.get_buffer()
+
+            # CRITICAL: Stop and release the microphone
             self._audio.stop()
+            print("[SimplePTTRecorder] Audio capture stopped, mic released", file=sys.stderr)
 
             if len(audio) == 0:
-                print("⚠️ No audio recorded")
+                print("⚠️ No audio recorded", file=sys.stderr)
                 return None
 
             duration = len(audio) / AudioCapture.SAMPLE_RATE
-            print(f"⏹️ Recording stopped ({duration:.1f}s)")
+            print(f"⏹️ Recording stopped ({duration:.1f}s)", file=sys.stderr)
 
             # Save audio file
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             audio_path = self.output_dir / f"ptt_{timestamp}.flac"
             sf.write(str(audio_path), audio, AudioCapture.SAMPLE_RATE)
             self._last_audio_path = audio_path
-            print(f"💾 Saved to {audio_path}")
+            print(f"💾 Saved to {audio_path}", file=sys.stderr)
 
             # Transcribe
-            print("📝 Transcribing...")
+            print("📝 Transcribing...", file=sys.stderr)
             transcriber = self._get_transcriber()
             result = transcriber.transcribe(audio)
 
             self._last_transcription = result.text
-            print(f"✅ Transcription: {result.text}")
+            print(f"✅ Transcription: {result.text}", file=sys.stderr)
 
             # Callback
             if self.on_transcription_ready:
@@ -178,9 +194,22 @@ def get_simple_ptt(
 
 
 def destroy_simple_ptt() -> None:
-    """Destroy global SimplePTTRecorder."""
+    """
+    Destroy global SimplePTTRecorder and RELEASE the microphone.
+
+    CRITICAL: This must be called to turn off the macOS orange mic indicator.
+    """
     global _simple_ptt
+    print("[SimplePTTRecorder] destroy_simple_ptt() called", file=sys.stderr)
     if _simple_ptt is not None:
         if _simple_ptt.is_recording:
+            print("[SimplePTTRecorder] Still recording, stopping first", file=sys.stderr)
             _simple_ptt.stop()
+
+        # CRITICAL: Also destroy the AudioCapture singleton to fully release mic
+        destroy_capture()
+
         _simple_ptt = None
+        print("[SimplePTTRecorder] Global PTT recorder destroyed, mic released", file=sys.stderr)
+    else:
+        print("[SimplePTTRecorder] No PTT recorder to destroy", file=sys.stderr)

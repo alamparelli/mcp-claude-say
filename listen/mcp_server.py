@@ -8,24 +8,35 @@ Simple operation:
 - Press hotkey to start recording
 - Press hotkey again to stop and transcribe
 - get_segment_transcription(): Get the transcribed text
+
+DEBUG: Logs go to stderr (visible in Claude Code's MCP console)
 """
 
 import threading
+import sys
 from typing import Optional
 from pathlib import Path
+
+print("[claude-listen] MCP Server starting...", file=sys.stderr)
+
 from mcp.server.fastmcp import FastMCP
+print("[claude-listen] FastMCP imported", file=sys.stderr)
 
 from .simple_ptt import SimplePTTRecorder, get_simple_ptt, destroy_simple_ptt
+print("[claude-listen] simple_ptt imported", file=sys.stderr)
+
 from .ptt_controller import (
     PTTController, PTTConfig, PTTState,
     get_ptt_controller, create_ptt_controller, destroy_ptt_controller
 )
+print("[claude-listen] ptt_controller imported", file=sys.stderr)
 
-import sys
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from shared.coordination import signal_stop_speaking
+print("[claude-listen] shared.coordination imported", file=sys.stderr)
 
 mcp = FastMCP("claude-listen")
+print("[claude-listen] FastMCP instance created", file=sys.stderr)
 
 # State
 _transcription_ready = threading.Event()
@@ -36,6 +47,7 @@ _current_status: str = "ready"  # ready, recording, transcribing
 def _on_transcription_ready(text: str) -> None:
     """Callback when transcription is ready."""
     global _last_transcription, _current_status
+    print(f"[claude-listen] Transcription ready: {text[:50]}...", file=sys.stderr)
     _last_transcription = text
     _current_status = "ready"
     _transcription_ready.set()
@@ -44,44 +56,53 @@ def _on_transcription_ready(text: str) -> None:
 def _ptt_start_recording() -> None:
     """Called when PTT key pressed - start recording."""
     global _current_status
+    print("[claude-listen] _ptt_start_recording callback triggered", file=sys.stderr)
     signal_stop_speaking()  # Stop any TTS
     _current_status = "recording"
     recorder = get_simple_ptt(on_transcription_ready=_on_transcription_ready)
     recorder.start()
+    print("[claude-listen] Recording started via callback", file=sys.stderr)
 
 
 def _ptt_stop_recording() -> None:
     """Called when PTT key pressed again - stop and transcribe."""
     global _current_status
+    print("[claude-listen] _ptt_stop_recording callback triggered", file=sys.stderr)
     _current_status = "transcribing"
     recorder = get_simple_ptt()
     recorder.stop()
+    print("[claude-listen] Recording stopped, transcription in progress", file=sys.stderr)
 
 
 @mcp.tool()
-def start_ptt_mode(key: str = "cmd_l+s") -> str:
+def start_ptt_mode(key: str = "cmd_r") -> str:
     """
     Start Push-to-Talk mode with global hotkey detection.
 
     In PTT mode:
-    - Press the hotkey combo to START recording
+    - Press the hotkey to START recording
     - Press again to STOP recording and transcribe
 
-    Available keys: cmd_r, cmd_l, alt_r, alt_l, ctrl_r, ctrl_l,
+    Available keys: cmd_r (Right Command), cmd_l, alt_r, alt_l, ctrl_r, ctrl_l,
                    shift_r, shift_l, f13, f14, f15, space
     Combos supported: cmd_r+m, ctrl_l+r, etc.
 
     Args:
-        key: The key combo to use for PTT toggle (default: cmd_l+s = Left Command + S)
+        key: The key to use for PTT toggle (default: cmd_r = Right Command)
 
     Returns:
         Confirmation message
     """
+    print(f"[claude-listen] start_ptt_mode called with key={key}", file=sys.stderr)
+
     try:
         existing = get_ptt_controller()
         if existing is not None and existing.is_active:
-            return f"PTT mode already active (state: {existing.state.value})"
+            msg = f"PTT mode already active (state: {existing.state.value})"
+            print(f"[claude-listen] {msg}", file=sys.stderr)
+            return msg
 
+        print(f"[claude-listen] Creating PTT controller with key={key}", file=sys.stderr)
         config = PTTConfig(
             key=key,
             on_start_recording=_ptt_start_recording,
@@ -89,32 +110,46 @@ def start_ptt_mode(key: str = "cmd_l+s") -> str:
         )
 
         controller = create_ptt_controller(config)
+        print("[claude-listen] PTT controller created, starting...", file=sys.stderr)
         controller.start()
 
-        return "PTT mode activated."
+        msg = f"PTT mode activated. Press {key.replace('_', ' ').title()} to toggle recording."
+        print(f"[claude-listen] {msg}", file=sys.stderr)
+        return msg
 
     except Exception as e:
+        print(f"[claude-listen] ERROR starting PTT mode: {e}", file=sys.stderr)
+        import traceback
+        traceback.print_exc(file=sys.stderr)
         return f"Error starting PTT mode: {e}"
 
 
 @mcp.tool()
 def stop_ptt_mode() -> str:
     """
-    Stop Push-to-Talk mode.
+    Stop Push-to-Talk mode and RELEASE the microphone.
 
-    This will also stop any active recording.
+    This will also stop any active recording and turn off
+    the macOS orange mic indicator.
 
     Returns:
         Summary of PTT session
     """
+    print("[claude-listen] stop_ptt_mode called", file=sys.stderr)
+
     controller = get_ptt_controller()
     if controller is None or not controller.is_active:
+        print("[claude-listen] PTT mode not active, nothing to stop", file=sys.stderr)
         return "PTT mode not active."
 
+    print("[claude-listen] Destroying PTT controller...", file=sys.stderr)
     destroy_ptt_controller()
+
+    print("[claude-listen] Destroying SimplePTT (releases mic)...", file=sys.stderr)
     destroy_simple_ptt()
 
-    return "PTT mode deactivated."
+    print("[claude-listen] PTT mode fully deactivated, mic released", file=sys.stderr)
+    return "PTT mode deactivated. Microphone released."
 
 
 @mcp.tool()
@@ -179,4 +214,6 @@ def get_segment_transcription(wait: bool = True, timeout: float = 120.0) -> str:
 
 
 if __name__ == "__main__":
+    print("[claude-listen] Starting MCP server via mcp.run()...", file=sys.stderr)
+    print("[claude-listen] Available tools: start_ptt_mode, stop_ptt_mode, get_ptt_status, get_segment_transcription", file=sys.stderr)
     mcp.run()
