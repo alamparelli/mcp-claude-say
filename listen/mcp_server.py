@@ -173,7 +173,7 @@ def get_ptt_status() -> str:
 
 
 @mcp.tool()
-def interrupt_conversation() -> str:
+def interrupt_conversation(reason: str = "typed_input") -> str:
     """
     Interrupt conversation mode cleanly.
 
@@ -187,18 +187,33 @@ def interrupt_conversation() -> str:
     After calling this, voice mode is fully stopped.
     User must explicitly restart voice mode if desired.
 
+    This function is idempotent - safe to call multiple times.
+
+    Args:
+        reason: Why the interruption occurred (for logging).
+                Values: "typed_input", "explicit_stop", "ui_cancel", etc.
+
     Returns:
         Confirmation message
+
+    Future enhancement (not yet implemented):
+        A "soft" interrupt mode could preserve voice session for quick resume.
+        See: interrupt_conversation(mode="soft") + resume_voice()
     """
     global _current_status, _last_transcription
 
-    log.info("Conversation interrupted by typed input")
+    # Idempotency: early-exit if already idle
+    controller = get_ptt_controller()
+    if _current_status == "ready" and (controller is None or not controller.is_active):
+        log.info(f"Interrupt called but system already idle (reason={reason})")
+        return "Conversation already idle."
+
+    log.info(f"Conversation interrupted (reason={reason})")
 
     # 1. Signal TTS to stop (backend-agnostic)
     signal_stop_speaking()
 
     # 2. Stop PTT and release mic
-    controller = get_ptt_controller()
     if controller is not None and controller.is_active:
         log.info("Stopping PTT controller...")
         destroy_ptt_controller()

@@ -30,7 +30,7 @@ listen/
 | `stop_ptt_mode()` | Stop PTT mode |
 | `get_ptt_status()` | Get current status (ready/recording/transcribing) |
 | `get_segment_transcription(wait?, timeout?)` | Get transcription (default timeout: 120s) |
-| `interrupt_conversation()` | Stop TTS + PTT cleanly (call on typed input) |
+| `interrupt_conversation(reason?)` | Stop TTS + PTT cleanly (idempotent, call on typed input) |
 
 ### Status Feedback
 `get_segment_transcription()` returns status messages to help identify the current state:
