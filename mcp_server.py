@@ -168,6 +168,9 @@ def speak_with_google(text: str, blocking: bool = True) -> bool:
             temp_path = f.name
 
         try:
+            # Clear stale stop signals before starting playback
+            check_and_clear_stop_signal()
+
             if blocking:
                 with process_lock:
                     current_afplay = subprocess.Popen(
@@ -235,6 +238,10 @@ def speech_worker():
 
         if item is None:  # Stop signal
             break
+
+        # Clear stale stop signals before starting new playback
+        # This converts stop from level-triggered to edge-triggered
+        check_and_clear_stop_signal()
 
         text, voice, rate, use_neural = item
         # Remove macOS-specific silence markup for neural backends

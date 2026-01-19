@@ -7,6 +7,25 @@ import subprocess
 from pathlib import Path
 from typing import Optional
 import os
+import sys
+
+# Add listen module to path for logger
+_listen_path = Path(__file__).parent.parent / "listen"
+if str(_listen_path) not in sys.path:
+    sys.path.insert(0, str(_listen_path))
+
+try:
+    from logger import get_logger
+    log = get_logger("coordination")
+except ImportError:
+    # Fallback if logger not available (e.g., called from say server)
+    import logging
+    log = logging.getLogger("coordination")
+    if not log.handlers:
+        handler = logging.StreamHandler()
+        handler.setFormatter(logging.Formatter('%(asctime)s [%(name)s] %(levelname)s: %(message)s'))
+        log.addHandler(handler)
+        log.setLevel(logging.DEBUG)
 
 
 # Signal file for stop communication
@@ -23,11 +42,12 @@ def signal_stop_speaking() -> bool:
     Returns:
         True if signal was sent successfully
     """
+    log.info("signal_stop_speaking() called")
+
     try:
         # Method 1: Use the MCP tool directly if in same process
         # This requires importing the say module
         try:
-            import sys
             say_path = Path(__file__).parent.parent
             if str(say_path) not in sys.path:
                 sys.path.insert(0, str(say_path))
@@ -35,17 +55,21 @@ def signal_stop_speaking() -> bool:
             # Try to import and call stop_speaking directly
             # This works if both servers run in same process or share state
             from mcp_server import stop_speaking
+            log.info("Direct import of stop_speaking succeeded, calling it...")
             stop_speaking()
+            log.info("stop_speaking() called successfully via direct import")
             return True
-        except ImportError:
-            pass
+        except ImportError as e:
+            log.debug(f"Direct import failed (expected in separate processes): {e}")
 
         # Method 2: Use signal file
+        log.info(f"Using signal file method: touching {STOP_SIGNAL_FILE}")
         STOP_SIGNAL_FILE.touch()
+        log.info("Signal file created successfully")
         return True
 
     except Exception as e:
-        print(f"Error signaling stop: {e}")
+        log.error(f"Error signaling stop: {e}")
         return False
 
 
@@ -59,6 +83,7 @@ def check_stop_signal() -> bool:
         True if stop signal is present
     """
     if STOP_SIGNAL_FILE.exists():
+        log.info("Stop signal detected! Clearing signal file and returning True")
         STOP_SIGNAL_FILE.unlink()  # Clear the signal
         return True
     return False
