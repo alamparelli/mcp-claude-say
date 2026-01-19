@@ -1,6 +1,10 @@
 """
 Audio capture module for claude-listen.
 Captures audio from microphone using sounddevice.
+
+IMPORTANT: macOS mic indicators are handle-based, not activity-based.
+If any process holds an open audio input stream, the indicator stays on.
+We MUST fully close and release the stream when done recording.
 """
 
 import numpy as np
@@ -9,9 +13,18 @@ from typing import Callable, Optional
 import threading
 from queue import Queue
 
+from .logger import get_logger
+
+log = get_logger("audio")
+
 
 class AudioCapture:
-    """Captures audio from microphone in real-time."""
+    """
+    Captures audio from microphone in real-time.
+
+    CRITICAL: Call close() or destroy() when done to release the microphone.
+    macOS will show the orange mic indicator until the stream is fully released.
+    """
 
     SAMPLE_RATE = 16000  # Whisper expects 16kHz
     CHANNELS = 1  # Mono
@@ -31,12 +44,34 @@ class AudioCapture:
         self._audio_queue: Queue = Queue()
         self._buffer: list[np.ndarray] = []
         self._lock = threading.Lock()
+        log.info("AudioCapture initialized")
+
+    def __del__(self):
+        """Ensure stream is closed on garbage collection."""
+        self._force_close_stream()
+
+    def _force_close_stream(self) -> None:
+        """Force close the audio stream - releases mic to OS."""
+        try:
+            if self._stream is not None:
+                try:
+                    self._stream.stop()
+                except Exception:
+                    pass  # May already be stopped
+                try:
+                    self._stream.close()
+                except Exception:
+                    pass  # May already be closed
+                self._stream = None
+                log.info("Stream force-closed, mic released")
+        except Exception as e:
+            log.error(f"Error in _force_close_stream: {e}")
 
     def _audio_callback(self, indata: np.ndarray, frames: int,
                         time_info: dict, status: sd.CallbackFlags) -> None:
         """Called by sounddevice for each audio block."""
         if status:
-            print(f"Audio status: {status}")
+            log.warning(f"Audio callback status: {status}")
 
         # Copy data to avoid issues with buffer reuse
         audio_chunk = indata.copy().flatten()
@@ -55,31 +90,45 @@ class AudioCapture:
     def start(self) -> None:
         """Start capturing audio from microphone."""
         if self._is_running:
+            log.debug("Already running, skipping start")
             return
 
+        log.info("Starting audio capture...")
         self._is_running = True
         self._buffer = []
 
-        self._stream = sd.InputStream(
-            samplerate=self.SAMPLE_RATE,
-            channels=self.CHANNELS,
-            dtype=self.DTYPE,
-            blocksize=self.BLOCK_SIZE,
-            callback=self._audio_callback
-        )
-        self._stream.start()
+        try:
+            self._stream = sd.InputStream(
+                samplerate=self.SAMPLE_RATE,
+                channels=self.CHANNELS,
+                dtype=self.DTYPE,
+                blocksize=self.BLOCK_SIZE,
+                callback=self._audio_callback
+            )
+            self._stream.start()
+            log.info("Stream started - mic is now active (orange dot)")
+        except Exception as e:
+            log.error(f"Failed to start stream: {e}")
+            self._is_running = False
+            self._force_close_stream()
+            raise
 
     def stop(self) -> None:
-        """Stop capturing audio."""
+        """
+        Stop capturing audio and RELEASE the microphone.
+
+        This MUST be called to turn off the macOS mic indicator.
+        """
         if not self._is_running:
+            log.debug("Not running, skipping stop")
             return
 
+        log.info("Stopping audio capture...")
         self._is_running = False
 
-        if self._stream:
-            self._stream.stop()
-            self._stream.close()
-            self._stream = None
+        # CRITICAL: Fully close the stream to release mic
+        self._force_close_stream()
+        log.info("Audio capture stopped, mic released")
 
     def get_buffer(self) -> np.ndarray:
         """
@@ -148,3 +197,17 @@ def get_capture() -> AudioCapture:
     if _capture is None:
         _capture = AudioCapture()
     return _capture
+
+
+def destroy_capture() -> None:
+    """
+    Destroy the global AudioCapture instance and release the microphone.
+
+    CRITICAL: Call this when PTT mode ends to turn off the mic indicator.
+    """
+    global _capture
+    if _capture is not None:
+        log.info("Destroying global capture instance")
+        _capture.stop()
+        _capture = None
+        log.info("Global capture destroyed")
