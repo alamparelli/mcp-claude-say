@@ -1,14 +1,5 @@
 #!/usr/bin/env python3
-"""
-Claude-Listen MCP Server - Simple PTT Mode
-Speech-to-Text for Claude Code using Push-to-Talk.
-
-Simple operation:
-- start_ptt_mode(key): Start listening for hotkey
-- Press hotkey to start recording
-- Press hotkey again to stop and transcribe
-- get_segment_transcription(): Get the transcribed text
-"""
+"""Claude-Listen: STT via PTT hotkey."""
 
 import threading
 from typing import Optional
@@ -60,23 +51,7 @@ def _ptt_stop_recording() -> None:
 
 @mcp.tool()
 def start_ptt_mode(key: str = "cmd_l+s") -> str:
-    """
-    Start Push-to-Talk mode with global hotkey detection.
-
-    In PTT mode:
-    - Press the hotkey combo to START recording
-    - Press again to STOP recording and transcribe
-
-    Available keys: cmd_r, cmd_l, alt_r, alt_l, ctrl_r, ctrl_l,
-                   shift_r, shift_l, f13, f14, f15, space
-    Combos supported: cmd_r+m, ctrl_l+r, etc.
-
-    Args:
-        key: The key combo to use for PTT toggle (default: cmd_l+s = Left Command + S)
-
-    Returns:
-        Confirmation message
-    """
+    """Start PTT with hotkey toggle. Keys: cmd/alt/ctrl/shift(_l/_r), f13-f15, space. Combos: mod+key"""
     try:
         existing = get_ptt_controller()
         if existing is not None and existing.is_active:
@@ -99,14 +74,7 @@ def start_ptt_mode(key: str = "cmd_l+s") -> str:
 
 @mcp.tool()
 def stop_ptt_mode() -> str:
-    """
-    Stop Push-to-Talk mode.
-
-    This will also stop any active recording.
-
-    Returns:
-        Summary of PTT session
-    """
+    """Stop PTT and active recording."""
     controller = get_ptt_controller()
     if controller is None or not controller.is_active:
         return "PTT mode not active."
@@ -119,12 +87,7 @@ def stop_ptt_mode() -> str:
 
 @mcp.tool()
 def get_ptt_status() -> str:
-    """
-    Get current Push-to-Talk status.
-
-    Returns:
-        PTT state and recording status
-    """
+    """Get PTT status: inactive/ready/recording/transcribing"""
     controller = get_ptt_controller()
 
     if controller is None or not controller.is_active:
@@ -135,24 +98,7 @@ def get_ptt_status() -> str:
 
 @mcp.tool()
 def get_segment_transcription(wait: bool = True, timeout: float = 120.0) -> str:
-    """
-    Get the latest segment transcription.
-
-    In segmented mode, this returns transcriptions as they become available.
-    Use this in a loop to get real-time transcription feedback.
-
-    Args:
-        wait: If True, wait for a new segment transcription
-        timeout: Maximum time to wait in seconds
-
-    Returns:
-        Latest segment transcription or status message:
-        - "[Ready]" - Waiting for user to start recording
-        - "[Recording...]" - Currently recording audio
-        - "[Transcribing...]" - Processing audio to text
-        - "[Timeout: No transcription received]" - Wait timed out
-        - Otherwise: The actual transcription text
-    """
+    """Get transcription. Args: wait, timeout(s). Returns: text or [Ready|Recording...|Transcribing...|Timeout]"""
     global _last_transcription
 
     controller = get_ptt_controller()
