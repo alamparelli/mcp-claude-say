@@ -1,18 +1,5 @@
 #!/usr/bin/env python3
-"""
-Claude-Listen MCP Server - Simple PTT Mode
-Speech-to-Text for Claude Code using Push-to-Talk.
-
-Simple operation:
-- start_ptt_mode(key): Start listening for hotkey
-- Press hotkey to start recording
-- Press hotkey again to stop and transcribe
-- get_segment_transcription(): Get the transcribed text
-
-Logs go to:
-- stderr (visible in Claude Code's MCP console)
-- /tmp/claude-listen.log (file for debugging)
-"""
+"""Claude-Listen: STT via PTT hotkey. Logs: stderr + /tmp/claude-listen.log"""
 
 import threading
 from typing import Optional
@@ -87,23 +74,7 @@ def _ptt_stop_recording() -> None:
 
 @mcp.tool()
 def start_ptt_mode(key: str = "cmd_r") -> str:
-    """
-    Start Push-to-Talk mode with global hotkey detection.
-
-    In PTT mode:
-    - Press the hotkey to START recording
-    - Press again to STOP recording and transcribe
-
-    Available keys: cmd_r (Right Command - default), cmd_l, alt_r, alt_l, ctrl_r, ctrl_l,
-                   shift_r, shift_l, f13, f14, f15, space
-    Combos supported: cmd_l+s, cmd_r+m, ctrl_l+r, etc.
-
-    Args:
-        key: The key to use for PTT toggle (default: cmd_r = Right Command)
-
-    Returns:
-        Confirmation message
-    """
+    """Start PTT with hotkey toggle. Keys: cmd/alt/ctrl/shift(_l/_r), f13-f15, space. Combos: mod+key"""
     log.info(f"start_ptt_mode called with key={key}")
 
     try:
@@ -135,15 +106,7 @@ def start_ptt_mode(key: str = "cmd_r") -> str:
 
 @mcp.tool()
 def stop_ptt_mode() -> str:
-    """
-    Stop Push-to-Talk mode and RELEASE the microphone.
-
-    This will also stop any active recording and turn off
-    the macOS orange mic indicator.
-
-    Returns:
-        Summary of PTT session
-    """
+    """Stop PTT and active recording."""
     log.info("stop_ptt_mode called")
 
     controller = get_ptt_controller()
@@ -163,12 +126,7 @@ def stop_ptt_mode() -> str:
 
 @mcp.tool()
 def get_ptt_status() -> str:
-    """
-    Get current Push-to-Talk status.
-
-    Returns:
-        PTT state and recording status
-    """
+    """Get PTT status: inactive/ready/recording/transcribing"""
     controller = get_ptt_controller()
 
     if controller is None or not controller.is_active:
@@ -179,32 +137,7 @@ def get_ptt_status() -> str:
 
 @mcp.tool()
 def interrupt_conversation(reason: str = "typed_input") -> str:
-    """
-    Interrupt conversation mode cleanly.
-
-    Call this when typed input arrives during voice conversation.
-    This will:
-    1. Stop any TTS speech immediately
-    2. Stop PTT recording if active
-    3. Release the microphone
-    4. Clear pending transcription states
-
-    After calling this, voice mode is fully stopped.
-    User must explicitly restart voice mode if desired.
-
-    This function is idempotent - safe to call multiple times.
-
-    Args:
-        reason: Why the interruption occurred (for logging).
-                Values: "typed_input", "explicit_stop", "ui_cancel", etc.
-
-    Returns:
-        Confirmation message
-
-    Future enhancement (not yet implemented):
-        A "soft" interrupt mode could preserve voice session for quick resume.
-        See: interrupt_conversation(mode="soft") + resume_voice()
-    """
+    """Stop TTS + PTT cleanly (idempotent). Call on typed input during voice conversation."""
     global _current_status, _last_transcription
 
     # Idempotency: early-exit if already idle
@@ -234,24 +167,7 @@ def interrupt_conversation(reason: str = "typed_input") -> str:
 
 @mcp.tool()
 def get_segment_transcription(wait: bool = True, timeout: float = 120.0) -> str:
-    """
-    Get the latest segment transcription.
-
-    In segmented mode, this returns transcriptions as they become available.
-    Use this in a loop to get real-time transcription feedback.
-
-    Args:
-        wait: If True, wait for a new segment transcription
-        timeout: Maximum time to wait in seconds
-
-    Returns:
-        Latest segment transcription or status message:
-        - "[Ready]" - Waiting for user to start recording
-        - "[Recording...]" - Currently recording audio
-        - "[Transcribing...]" - Processing audio to text
-        - "[Timeout: No transcription received]" - Wait timed out
-        - Otherwise: The actual transcription text
-    """
+    """Get transcription. Args: wait, timeout(s). Returns: text or [Ready|Recording...|Transcribing...|Timeout]"""
     global _last_transcription
 
     controller = get_ptt_controller()
