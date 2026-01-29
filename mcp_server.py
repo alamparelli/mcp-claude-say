@@ -136,8 +136,8 @@ def speak_with_google(text: str, blocking: bool = True) -> bool:
         return False
 
     try:
-        # Build the API request
-        url = f"https://texttospeech.googleapis.com/v1/text:synthesize?key={GOOGLE_CLOUD_API_KEY}"
+        # Build the API request (use header for API key - more secure than URL param)
+        url = "https://texttospeech.googleapis.com/v1/text:synthesize"
         payload = {
             "input": {"text": text},
             "voice": {
@@ -153,7 +153,10 @@ def speak_with_google(text: str, blocking: bool = True) -> bool:
         req = urllib.request.Request(
             url,
             data=data,
-            headers={"Content-Type": "application/json"},
+            headers={
+                "Content-Type": "application/json",
+                "X-Goog-Api-Key": GOOGLE_CLOUD_API_KEY
+            },
             method="POST"
         )
         response = urllib.request.urlopen(req, timeout=30)
@@ -239,9 +242,17 @@ def speech_worker():
         if item is None:  # Stop signal
             break
 
-        # Clear stale stop signals before starting new playback
-        # This converts stop from level-triggered to edge-triggered
-        check_and_clear_stop_signal()
+        # Check for stop signal - if present, clear queue and skip this item
+        if check_and_clear_stop_signal():
+            # Clear all remaining items in queue
+            while not speech_queue.empty():
+                try:
+                    speech_queue.get_nowait()
+                    speech_queue.task_done()
+                except Empty:
+                    break
+            speech_queue.task_done()  # Mark current item as done
+            continue  # Skip to next iteration (queue is now empty)
 
         text, voice, rate, use_neural = item
         # Remove macOS-specific silence markup for neural backends
