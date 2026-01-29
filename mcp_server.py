@@ -13,6 +13,41 @@ from queue import Queue, Empty
 from pathlib import Path
 from mcp.server.fastmcp import FastMCP
 
+
+def load_env_file():
+    """Load configuration from ~/.mcp-claude-say/.env file.
+
+    This allows centralized config without requiring python-dotenv.
+    Only sets env vars if not already set (os.environ.setdefault).
+    """
+    env_path = Path.home() / ".mcp-claude-say" / ".env"
+    if not env_path.exists():
+        return
+
+    try:
+        for line in env_path.read_text().splitlines():
+            line = line.strip()
+            # Skip empty lines and comments
+            if not line or line.startswith('#'):
+                continue
+            # Parse KEY=value (handle values with = in them)
+            if '=' in line:
+                key, val = line.split('=', 1)
+                key = key.strip()
+                val = val.strip()
+                # Remove surrounding quotes if present
+                if val and len(val) >= 2:
+                    if (val[0] == '"' and val[-1] == '"') or (val[0] == "'" and val[-1] == "'"):
+                        val = val[1:-1]
+                # Only set if not already in environment
+                os.environ.setdefault(key, val)
+    except Exception:
+        pass  # Silently ignore errors - fall back to defaults
+
+
+# Load .env file before any env var reads
+load_env_file()
+
 # Signal file for stop communication (shared with claude-listen)
 STOP_SIGNAL_FILE = Path("/tmp/claude-voice-stop")
 
