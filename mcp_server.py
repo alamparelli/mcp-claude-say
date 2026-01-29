@@ -1,9 +1,5 @@
 #!/usr/bin/env python3
-"""
-Claude-Say MCP Server
-Text-to-speech MCP server with Chatterbox neural TTS and macOS voice fallback.
-Provides queue management and speech control for Claude Code.
-"""
+"""Claude-Say: TTS with queue. Backends: google, chatterbox, macos (default)."""
 
 import subprocess
 import threading
@@ -312,22 +308,7 @@ TRAILING_SILENCE_MS = 300
 
 @mcp.tool()
 def speak(text: str, voice: str | None = None, speed: float = 1.0) -> str:
-    """
-    Queue text to speak without waiting. Returns immediately.
-    Use this for natural flowing speech - queue multiple messages that play smoothly.
-
-    Args:
-        text: The text to speak
-        voice: Voice to use. Options:
-               - None: Use configured TTS_BACKEND (google, chatterbox, or macos)
-               - "Samantha": macOS female voice
-               - Any other macOS voice name
-        speed: Speech speed (0.5 = slow, 1.0 = normal, 2.0 = fast)
-               Note: speed only applies to macOS voices; neural TTS uses natural pacing.
-
-    Returns:
-        Confirmation that text was queued
-    """
+    """Queue TTS without waiting. Args: text, voice, speed (1.0=normal)"""
     ensure_worker_running()
     rate = int(speed * 175)  # 175 words/min = normal speed
 
@@ -346,22 +327,7 @@ def speak(text: str, voice: str | None = None, speed: float = 1.0) -> str:
 
 @mcp.tool()
 def speak_and_wait(text: str, voice: str | None = None, speed: float = 1.1) -> str:
-    """
-    Speak text and wait until speech is finished before returning.
-    Use this instead of speak() + polling queue_status() to reduce API round trips.
-
-    Args:
-        text: The text to speak
-        voice: Voice to use. Options:
-               - None: Use configured TTS_BACKEND (google, chatterbox, or macos)
-               - "Samantha": macOS female voice
-               - Any other macOS voice name
-        speed: Speech speed (0.5 = slow, 1.0 = normal, 1.1 = default, 2.0 = fast)
-               Note: speed only applies to macOS voices; neural TTS uses natural pacing.
-
-    Returns:
-        Confirmation that speech has completed
-    """
+    """Speak and wait for completion. Args: text, voice, speed (1.1=default)"""
     ensure_worker_running()
     rate = int(speed * 175)  # 175 words/min = normal speed
 
@@ -389,12 +355,7 @@ def speak_and_wait(text: str, voice: str | None = None, speed: float = 1.1) -> s
 
 @mcp.tool()
 def stop_speaking() -> str:
-    """
-    Stop current speech immediately and clear the queue.
-
-    Returns:
-        Confirmation of stop
-    """
+    """Stop current TTS and clear queue."""
     global current_process, current_afplay
 
     # Clear the queue
