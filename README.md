@@ -11,7 +11,113 @@ Voice interaction MCP servers for Claude Code. Includes both Text-to-Speech (TTS
 - **Full conversation mode** - Complete voice loop with `/conversation`
 - **Fast local STT** - Uses Parakeet MLX (optimized for Apple Silicon)
 - **Multilingual** - Speaks and understands multiple languages
-- **Lightweight** - Uses native macOS speech synthesis, no external APIs for TTS
+- **Lightweight** - Uses native macOS speech synthesis by default, no external APIs
+
+## TTS Backend Options
+
+Choose your TTS backend based on your needs:
+
+| Backend | Quality | Storage | Latency | Free Tier |
+|---------|---------|---------|---------|-----------|
+| **macOS** (default) | Basic | 0 | Instant | Unlimited |
+| **Google Cloud** | Good | 0 | ~0.5s | 1M chars/mo |
+| **Chatterbox** | Excellent | 11GB | ~0.3s | Unlimited |
+
+### Option 1: macOS (Default)
+
+No setup required. Uses the native `say` command. Voice is robotic but works everywhere.
+
+### Option 2: Google Cloud TTS (Recommended)
+
+Natural-sounding voices with zero storage footprint.
+
+**Pricing Tiers:**
+
+| Tier | Quality | Price |
+|------|---------|-------|
+| Neural2 | Good | Free (1M chars/mo) |
+| Studio | Better | $0.16/1M chars |
+| Journey | Conversational | $0.30/1M chars |
+| Chirp3-HD | Best (Gemini) | $0.30/1M chars |
+
+**Setup:**
+
+1. Create a Google Cloud project at [console.cloud.google.com](https://console.cloud.google.com)
+2. Enable the [Text-to-Speech API](https://console.cloud.google.com/apis/library/texttospeech.googleapis.com)
+3. Create an API key at [APIs & Services > Credentials](https://console.cloud.google.com/apis/credentials)
+
+**Configure:**
+
+Add to your shell profile (`~/.zshrc` or `~/.bashrc`):
+
+```bash
+export TTS_BACKEND="google"
+export GOOGLE_CLOUD_API_KEY="your-api-key-here"
+
+# Optional: change voice and language (defaults: en-US-Neural2-F, en-US)
+export GOOGLE_VOICE="en-GB-Chirp3-HD-Erinome"  # British female
+export GOOGLE_LANGUAGE="en-GB"
+```
+
+Then restart Claude Code or run `source ~/.zshrc`.
+
+**Example Voices:**
+
+| Voice | Tier | Description |
+|-------|------|-------------|
+| `en-US-Neural2-F` | Free | US female (default) |
+| `en-US-Journey-O` | Paid | US female, conversational |
+| `en-GB-Chirp3-HD-Erinome` | Paid | British female |
+| `en-GB-Chirp3-HD-Aoede` | Paid | British female |
+| `en-US-Neural2-D` | Free | US male |
+
+See [all voices](https://cloud.google.com/text-to-speech/docs/voices) for more options.
+
+### Option 3: Chatterbox (Local Neural TTS)
+
+Highest quality, runs 100% locally, but requires 11GB storage for model weights.
+
+**Setup:**
+
+```bash
+# Requires Python 3.11 (Chatterbox doesn't support 3.12+)
+python3.11 -m venv ~/.mcp-claude-say/venv-tts
+source ~/.mcp-claude-say/venv-tts/bin/activate
+pip install chatterbox-tts uvicorn fastapi torchaudio
+
+# Add a voice sample (5-10 seconds of clear speech, 24kHz WAV)
+mkdir -p ~/.mcp-claude-say/voices
+# Copy your sample to voices/female_voice.wav
+```
+
+**Configure:**
+
+```bash
+export TTS_BACKEND="chatterbox"
+```
+
+**Usage:**
+
+The Chatterbox service must be started manually:
+
+```bash
+# Start the service (~5-10 sec to load model)
+~/.mcp-claude-say/start_tts_service.sh
+
+# Verify it's running
+curl http://127.0.0.1:8123/health
+
+# Stop when done (frees ~1.5GB RAM)
+~/.mcp-claude-say/stop_tts_service.sh
+```
+
+| Factor | Impact |
+|--------|--------|
+| Storage | ~11GB for model weights |
+| RAM | ~1.5GB when running |
+| First load | 5-10 seconds |
+
+If the service isn't running, TTS falls back to macOS `say`.
 
 ## One-Line Installation
 
@@ -64,9 +170,24 @@ Say **"fin de session"** to end the conversation.
 | Key | Description |
 |-----|-------------|
 | `cmd_l+s` | Left Command + S (default) |
+| `cmd_r` | Right Command (recommended for MacBooks) |
 | `cmd_r+m` | Right Command + M |
 | `alt_l`, `alt_r` | Option keys |
 | `f13`, `f14`, `f15` | Function keys |
+
+### MacBook Hotkey Notes
+
+Some hotkeys don't work well on MacBooks:
+
+| Hotkey | Issue |
+|--------|-------|
+| `alt_l+c` | ❌ Produces `ç` character on macOS |
+| `f13`, `f14`, `f15` | ❌ MacBooks don't have these keys |
+| `ctrl_r` | ❌ MacBooks don't have Right Control |
+| `cmd_l+s` | ⚠️ Conflicts with Save in most apps |
+| `cmd_r` | ✅ Right Command alone - no conflicts, works everywhere |
+
+**Recommendation:** Use `cmd_r` (Right Command) for PTT on MacBooks.
 
 ## Requirements
 

@@ -232,22 +232,22 @@ else
     echo -e "${GREEN}[4/6]${NC} Skipping SpeechAnalyzer CLI (not needed)"
 fi
 
-# Install skills
+# Install skills (symlinked so updates auto-propagate)
 echo -e "${GREEN}[5/6]${NC} Installing Claude Code skills..."
 
 # Install speak skill (always)
 mkdir -p "$SKILL_DIR"
 if [[ -f "$SOURCE_DIR/skill/SKILL.md" ]]; then
-    cp "$SOURCE_DIR/skill/SKILL.md" "$SKILL_DIR/"
-    echo -e "       ${GREEN}Installed /speak skill${NC}"
+    ln -sf "$SOURCE_DIR/skill/SKILL.md" "$SKILL_DIR/SKILL.md"
+    echo -e "       ${GREEN}Installed /speak skill (symlinked)${NC}"
 fi
 
 # Install conversation skill (only if STT enabled)
 if [[ "$INSTALL_MODE" != "tts-only" ]]; then
     mkdir -p "$SKILL_CONVERSATION_DIR"
     if [[ -f "$SOURCE_DIR/skill/conversation/SKILL.md" ]]; then
-        cp "$SOURCE_DIR/skill/conversation/SKILL.md" "$SKILL_CONVERSATION_DIR/"
-        echo -e "       ${GREEN}Installed /conversation skill${NC}"
+        ln -sf "$SOURCE_DIR/skill/conversation/SKILL.md" "$SKILL_CONVERSATION_DIR/SKILL.md"
+        echo -e "       ${GREEN}Installed /conversation skill (symlinked)${NC}"
     fi
 else
     echo -e "       ${YELLOW}Skipping /conversation skill (TTS only mode)${NC}"

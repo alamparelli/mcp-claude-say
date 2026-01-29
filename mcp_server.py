@@ -1,26 +1,213 @@
 #!/usr/bin/env python3
 """
 Claude-Say MCP Server
-Text-to-speech MCP server for macOS using the native 'say' command.
+Text-to-speech MCP server with Chatterbox neural TTS and macOS voice fallback.
 Provides queue management and speech control for Claude Code.
 """
 
 import subprocess
 import threading
 import os
+import time
+import tempfile
+import base64
+import urllib.request
+import json
 from queue import Queue, Empty
+from pathlib import Path
 from mcp.server.fastmcp import FastMCP
+
+# Signal file for stop communication (shared with claude-listen)
+STOP_SIGNAL_FILE = Path("/tmp/claude-voice-stop")
+
+
+def check_and_clear_stop_signal() -> bool:
+    """Check if stop signal exists and clear it. Returns True if signal was present."""
+    if STOP_SIGNAL_FILE.exists():
+        try:
+            STOP_SIGNAL_FILE.unlink()
+        except:
+            pass
+        return True
+    return False
+
 
 mcp = FastMCP("claude-say")
 
 # Global state
 speech_queue: Queue = Queue()
 current_process: subprocess.Popen | None = None
+current_afplay: subprocess.Popen | None = None  # Tracks afplay for Google TTS
 process_lock = threading.Lock()
 worker_thread: threading.Thread | None = None
 
+# TTS Backend selection (env-configurable)
+# Options: "chatterbox" (local neural, 11GB), "google" (cloud, needs API key), "macos" (built-in)
+TTS_BACKEND = os.getenv("TTS_BACKEND", "macos").lower()
+
+# Chatterbox configuration (for TTS_BACKEND=chatterbox)
+CHATTERBOX_URL = os.getenv("CHATTERBOX_URL", "http://127.0.0.1:8123")
+USE_CHATTERBOX = TTS_BACKEND == "chatterbox" or os.getenv("USE_CHATTERBOX", "0") == "1"
+DEFAULT_VOICE = os.getenv("DEFAULT_VOICE", "female_voice")
+
+# Google Cloud TTS configuration (for TTS_BACKEND=google)
+GOOGLE_CLOUD_API_KEY = os.getenv("GOOGLE_CLOUD_API_KEY", "")
+GOOGLE_VOICE = os.getenv("GOOGLE_VOICE", "en-US-Neural2-F")  # Neural2 voices are in free tier
+GOOGLE_LANGUAGE = os.getenv("GOOGLE_LANGUAGE", "en-US")
+
+# Health check cache to avoid blocking worker thread
+_last_health_check = 0.0
+_health_ok = False
+_health_lock = threading.Lock()
+HEALTH_CHECK_TTL = 2.0  # seconds
+
 # Ready notification sound (macOS system sound)
 READY_SOUND = "/System/Library/Sounds/Pop.aiff"
+
+
+def chatterbox_available() -> bool:
+    """
+    Check if Chatterbox TTS service is running.
+    Caches result for HEALTH_CHECK_TTL seconds to avoid blocking.
+    Thread-safe via lock.
+    """
+    global _last_health_check, _health_ok
+    now = time.time()
+
+    with _health_lock:
+        if now - _last_health_check < HEALTH_CHECK_TTL:
+            return _health_ok
+        try:
+            req = urllib.request.urlopen(f"{CHATTERBOX_URL}/health", timeout=1)
+            data = json.loads(req.read().decode())
+            _health_ok = data.get("model_loaded", False)
+        except:
+            _health_ok = False
+        _last_health_check = now
+        return _health_ok
+
+
+def speak_with_chatterbox(text: str, blocking: bool = True, voice: str | None = None) -> bool:
+    """
+    Speak using Chatterbox TTS service.
+    Returns True if successful, False if service unavailable.
+    """
+    try:
+        endpoint = "/speak" if blocking else "/speak_async"
+        payload = {"text": text, "voice": voice or DEFAULT_VOICE}
+        data = json.dumps(payload).encode("utf-8")
+        req = urllib.request.Request(
+            f"{CHATTERBOX_URL}{endpoint}",
+            data=data,
+            headers={"Content-Type": "application/json"},
+            method="POST"
+        )
+        response = urllib.request.urlopen(req, timeout=60)
+        return response.status == 200
+    except:
+        return False
+
+
+def stop_chatterbox() -> bool:
+    """Stop Chatterbox playback."""
+    try:
+        req = urllib.request.Request(
+            f"{CHATTERBOX_URL}/stop",
+            method="POST"
+        )
+        urllib.request.urlopen(req, timeout=2)
+        return True
+    except:
+        return False
+
+
+def google_tts_available() -> bool:
+    """Check if Google Cloud TTS is configured."""
+    return bool(GOOGLE_CLOUD_API_KEY) and TTS_BACKEND == "google"
+
+
+def speak_with_google(text: str, blocking: bool = True) -> bool:
+    """
+    Speak using Google Cloud Text-to-Speech API.
+    Returns True if successful, False on error.
+    """
+    global current_afplay
+    if not GOOGLE_CLOUD_API_KEY:
+        return False
+
+    try:
+        # Build the API request (use header for API key - more secure than URL param)
+        url = "https://texttospeech.googleapis.com/v1/text:synthesize"
+        payload = {
+            "input": {"text": text},
+            "voice": {
+                "languageCode": GOOGLE_LANGUAGE,
+                "name": GOOGLE_VOICE
+            },
+            "audioConfig": {
+                "audioEncoding": "MP3",
+                "speakingRate": 1.0
+            }
+        }
+        data = json.dumps(payload).encode("utf-8")
+        req = urllib.request.Request(
+            url,
+            data=data,
+            headers={
+                "Content-Type": "application/json",
+                "X-Goog-Api-Key": GOOGLE_CLOUD_API_KEY
+            },
+            method="POST"
+        )
+        response = urllib.request.urlopen(req, timeout=30)
+        result = json.loads(response.read().decode())
+
+        # Decode the audio content
+        audio_content = base64.b64decode(result["audioContent"])
+
+        # Save to temp file and play
+        with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False, prefix="google_tts_") as f:
+            f.write(audio_content)
+            temp_path = f.name
+
+        try:
+            # Clear stale stop signals before starting playback
+            check_and_clear_stop_signal()
+
+            if blocking:
+                with process_lock:
+                    current_afplay = subprocess.Popen(
+                        ["afplay", temp_path],
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL
+                    )
+                # Poll for completion while checking stop signal
+                while current_afplay.poll() is None:
+                    if check_and_clear_stop_signal():
+                        current_afplay.terminate()
+                        break
+                    time.sleep(0.05)  # Check every 50ms
+                with process_lock:
+                    current_afplay = None
+            else:
+                subprocess.Popen(
+                    ["afplay", temp_path],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL
+                )
+        finally:
+            if blocking:
+                try:
+                    os.unlink(temp_path)
+                except:
+                    pass
+            # For non-blocking, file cleanup happens when afplay finishes (not ideal but acceptable)
+
+        return True
+    except Exception as e:
+        # Log error but don't crash - will fallback to macOS
+        return False
+
 
 def play_ready_sound():
     """Play a short notification sound to indicate ready to listen."""
@@ -31,9 +218,9 @@ def play_ready_sound():
             stderr=subprocess.DEVNULL
         )
 
+
 def clear_listen_segments():
     """Clear segments from claude-listen to avoid feedback loop."""
-    import shutil
     segment_dir = "/tmp/claude-segments"
     if os.path.exists(segment_dir):
         for f in os.listdir(segment_dir):
@@ -55,9 +242,37 @@ def speech_worker():
         if item is None:  # Stop signal
             break
 
-        text, voice, rate = item
+        # Check for stop signal - if present, clear queue and skip this item
+        if check_and_clear_stop_signal():
+            # Clear all remaining items in queue
+            while not speech_queue.empty():
+                try:
+                    speech_queue.get_nowait()
+                    speech_queue.task_done()
+                except Empty:
+                    break
+            speech_queue.task_done()  # Mark current item as done
+            continue  # Skip to next iteration (queue is now empty)
 
-        # Build the command (voice is optional)
+        text, voice, rate, use_neural = item
+        # Remove macOS-specific silence markup for neural backends
+        clean_text = text.replace(f" [[slnc {TRAILING_SILENCE_MS}]]", "")
+
+        # Try Google Cloud TTS (if configured)
+        if use_neural and google_tts_available():
+            if speak_with_google(clean_text, blocking=True):
+                speech_queue.task_done()
+                continue
+            # Fall through to other backends if Google fails
+
+        # Try Chatterbox for neural TTS (if enabled)
+        if use_neural and USE_CHATTERBOX and chatterbox_available():
+            if speak_with_chatterbox(clean_text, blocking=True):
+                speech_queue.task_done()
+                continue
+            # Fall through to macOS voice if Chatterbox fails
+
+        # Fallback to macOS 'say' command
         cmd = ["/usr/bin/say", "-r", str(rate)]
         if voice:
             cmd.extend(["-v", voice])
@@ -70,7 +285,12 @@ def speech_worker():
                 stderr=subprocess.DEVNULL
             )
 
-        current_process.wait()
+        # Poll for completion while checking stop signal
+        while current_process.poll() is None:
+            if check_and_clear_stop_signal():
+                current_process.terminate()
+                break
+            time.sleep(0.05)  # Check every 50ms
 
         with process_lock:
             current_process = None
@@ -98,8 +318,12 @@ def speak(text: str, voice: str | None = None, speed: float = 1.0) -> str:
 
     Args:
         text: The text to speak
-        voice: Voice to use (None = default Siri/system voice)
+        voice: Voice to use. Options:
+               - None: Use configured TTS_BACKEND (google, chatterbox, or macos)
+               - "Samantha": macOS female voice
+               - Any other macOS voice name
         speed: Speech speed (0.5 = slow, 1.0 = normal, 2.0 = fast)
+               Note: speed only applies to macOS voices; neural TTS uses natural pacing.
 
     Returns:
         Confirmation that text was queued
@@ -107,12 +331,17 @@ def speak(text: str, voice: str | None = None, speed: float = 1.0) -> str:
     ensure_worker_running()
     rate = int(speed * 175)  # 175 words/min = normal speed
 
-    # Add trailing silence so the last word is fully heard
+    # Determine if we should use neural TTS (default backend or explicit request)
+    use_neural = voice is None or voice.lower() in ("chatterbox", "google")
+    macos_voice = None if use_neural else voice
+
+    # Add trailing silence so the last word is fully heard (for macOS voices)
     text_with_silence = f"{text} [[slnc {TRAILING_SILENCE_MS}]]"
 
-    speech_queue.put((text_with_silence, voice, rate))
+    speech_queue.put((text_with_silence, macos_voice, rate, use_neural))
 
-    return "Queued"
+    backend_name = TTS_BACKEND if use_neural else voice
+    return f"Queued ({backend_name})"
 
 
 @mcp.tool()
@@ -123,8 +352,12 @@ def speak_and_wait(text: str, voice: str | None = None, speed: float = 1.1) -> s
 
     Args:
         text: The text to speak
-        voice: Voice to use (None = default Siri/system voice)
+        voice: Voice to use. Options:
+               - None: Use configured TTS_BACKEND (google, chatterbox, or macos)
+               - "Samantha": macOS female voice
+               - Any other macOS voice name
         speed: Speech speed (0.5 = slow, 1.0 = normal, 1.1 = default, 2.0 = fast)
+               Note: speed only applies to macOS voices; neural TTS uses natural pacing.
 
     Returns:
         Confirmation that speech has completed
@@ -132,10 +365,14 @@ def speak_and_wait(text: str, voice: str | None = None, speed: float = 1.1) -> s
     ensure_worker_running()
     rate = int(speed * 175)  # 175 words/min = normal speed
 
-    # Add trailing silence so the last word is fully heard
+    # Determine if we should use neural TTS (default backend or explicit request)
+    use_neural = voice is None or voice.lower() in ("chatterbox", "google")
+    macos_voice = None if use_neural else voice
+
+    # Add trailing silence so the last word is fully heard (for macOS voices)
     text_with_silence = f"{text} [[slnc {TRAILING_SILENCE_MS}]]"
 
-    speech_queue.put((text_with_silence, voice, rate))
+    speech_queue.put((text_with_silence, macos_voice, rate, use_neural))
 
     # Wait for the queue to be processed
     speech_queue.join()
@@ -146,7 +383,8 @@ def speak_and_wait(text: str, voice: str | None = None, speed: float = 1.1) -> s
     # Play ready sound to indicate listening is active
     play_ready_sound()
 
-    return "Speech completed"
+    backend_name = TTS_BACKEND if use_neural else voice
+    return f"Speech completed ({backend_name})"
 
 
 @mcp.tool()
@@ -157,7 +395,7 @@ def stop_speaking() -> str:
     Returns:
         Confirmation of stop
     """
-    global current_process
+    global current_process, current_afplay
 
     # Clear the queue
     items_cleared = 0
@@ -168,12 +406,26 @@ def stop_speaking() -> str:
         except Empty:
             break
 
-    # Stop current process
+    # Stop Chatterbox playback (only if enabled)
+    if USE_CHATTERBOX:
+        stop_chatterbox()
+
+    stopped = False
     with process_lock:
+        # Stop Google TTS afplay process
+        if current_afplay and current_afplay.poll() is None:
+            current_afplay.terminate()
+            current_afplay = None
+            stopped = True
+
+        # Stop macOS say process
         if current_process and current_process.poll() is None:
             current_process.terminate()
             current_process = None
-            return f"Stopped. {items_cleared} message(s) cleared from queue."
+            stopped = True
+
+    if stopped:
+        return f"Stopped. {items_cleared} message(s) cleared from queue."
 
     return f"Nothing playing. {items_cleared} message(s) cleared from queue."
 
