@@ -26,7 +26,7 @@ from .ptt_controller import (
 log.debug("ptt_controller imported")
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
-from shared.coordination import signal_stop_speaking
+from shared.coordination import signal_stop_speaking, is_speaking
 log.debug("shared.coordination imported")
 
 
@@ -53,9 +53,12 @@ def _ptt_start_recording() -> None:
     global _current_status
     log.info("_ptt_start_recording callback triggered")
 
-    # Stop TTS and clear all queued messages via signal file
-    # The TTS worker will clear the queue when it sees the signal
-    signal_stop_speaking()
+    # Only stop TTS if it's actively speaking (avoid killing queued messages)
+    if is_speaking():
+        log.info("TTS is speaking, sending stop signal")
+        signal_stop_speaking()
+    else:
+        log.debug("TTS not speaking, no stop signal needed")
 
     _current_status = "recording"
     recorder = get_simple_ptt(on_transcription_ready=_on_transcription_ready)
