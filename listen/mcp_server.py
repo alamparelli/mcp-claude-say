@@ -2,6 +2,7 @@
 """Claude-Listen: STT via PTT hotkey. Logs: stderr + /tmp/claude-listen.log"""
 
 import threading
+import gc
 from typing import Optional
 from pathlib import Path
 import sys
@@ -119,6 +120,9 @@ def stop_ptt_mode() -> str:
 
     log.info("Destroying SimplePTT (releases mic)...")
     destroy_simple_ptt()
+
+    # Memory optimization: force garbage collection to free buffers
+    gc.collect()
 
     log.info("PTT mode fully deactivated, mic released")
     return "PTT mode deactivated. Microphone released."

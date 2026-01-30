@@ -11,7 +11,6 @@ import numpy as np
 import sounddevice as sd
 from typing import Callable, Optional
 import threading
-from queue import Queue
 
 from .logger import get_logger
 
@@ -31,6 +30,9 @@ class AudioCapture:
     DTYPE = np.float32
     BLOCK_SIZE = 512  # ~32ms at 16kHz
 
+    # Memory optimization: limit buffer to ~10 minutes of audio max
+    MAX_BUFFER_CHUNKS = 18750  # ~10 min at 16kHz with 512 block size
+
     def __init__(self, on_audio: Optional[Callable[[np.ndarray], None]] = None):
         """
         Initialize audio capture.
@@ -41,7 +43,6 @@ class AudioCapture:
         self.on_audio = on_audio
         self._stream: Optional[sd.InputStream] = None
         self._is_running = False
-        self._audio_queue: Queue = Queue()
         self._buffer: list[np.ndarray] = []
         self._lock = threading.Lock()
         log.info("AudioCapture initialized")
@@ -76,16 +77,16 @@ class AudioCapture:
         # Copy data to avoid issues with buffer reuse
         audio_chunk = indata.copy().flatten()
 
-        # Add to buffer
+        # Add to buffer with size limit (memory optimization)
         with self._lock:
             self._buffer.append(audio_chunk)
+            # Trim oldest chunks if buffer exceeds max size
+            if len(self._buffer) > self.MAX_BUFFER_CHUNKS:
+                self._buffer = self._buffer[-self.MAX_BUFFER_CHUNKS:]
 
         # Call callback if set
         if self.on_audio:
             self.on_audio(audio_chunk)
-
-        # Also put in queue for get_audio()
-        self._audio_queue.put(audio_chunk)
 
     def start(self) -> None:
         """Start capturing audio from microphone."""
@@ -149,13 +150,6 @@ class AudioCapture:
         """Clear the audio buffer."""
         with self._lock:
             self._buffer = []
-
-        # Also clear the queue
-        while not self._audio_queue.empty():
-            try:
-                self._audio_queue.get_nowait()
-            except:
-                break
 
     @property
     def is_running(self) -> bool:
