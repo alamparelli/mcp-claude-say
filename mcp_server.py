@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Claude-Say: TTS with queue. Backends: google, chatterbox, macos (default)."""
+"""Claude-Say: TTS with queue. Backends: kokoro, google, chatterbox, macos (default)."""
 
 import subprocess
 import threading
@@ -14,6 +14,20 @@ import logging
 from queue import Queue, Empty
 from pathlib import Path
 from mcp.server.fastmcp import FastMCP
+
+# Add say/ to path for MLXAudioTTS import
+sys.path.insert(0, str(Path(__file__).parent / "say"))
+
+# Configure espeak library path for French/multilingual phonemization (macOS)
+# This is set after load_env_file() so .env value takes precedence
+def _configure_espeak():
+    if "PHONEMIZER_ESPEAK_LIBRARY" in os.environ and os.environ["PHONEMIZER_ESPEAK_LIBRARY"]:
+        return  # Already configured via .env
+    if sys.platform == "darwin":
+        for lib_path in ["/opt/homebrew/lib/libespeak-ng.dylib", "/usr/local/lib/libespeak-ng.dylib"]:
+            if Path(lib_path).exists():
+                os.environ["PHONEMIZER_ESPEAK_LIBRARY"] = lib_path
+                break
 
 # Configure logging to stderr (visible in MCP logs)
 LOG_LEVEL = os.getenv("TTS_LOG_LEVEL", "WARNING").upper()
@@ -33,9 +47,11 @@ def load_env_file():
     """
     env_path = Path.home() / ".mcp-claude-say" / ".env"
     if not env_path.exists():
+        logger.debug(f"No .env file found at {env_path}")
         return
 
     try:
+        loaded_vars = []
         for line in env_path.read_text().splitlines():
             line = line.strip()
             # Skip empty lines and comments
@@ -52,12 +68,17 @@ def load_env_file():
                         val = val[1:-1]
                 # Only set if not already in environment
                 os.environ.setdefault(key, val)
-    except Exception:
-        pass  # Silently ignore errors - fall back to defaults
+                loaded_vars.append(f"{key}={val}")
+        logger.debug(f"Loaded from .env: {', '.join(loaded_vars)}")
+    except Exception as e:
+        logger.warning(f"Error loading .env: {e}")
 
 
 # Load .env file before any env var reads
 load_env_file()
+
+# Configure espeak after loading .env (for French/multilingual)
+_configure_espeak()
 
 # Signal file for stop communication (shared with claude-listen)
 STOP_SIGNAL_FILE = Path("/tmp/claude-voice-stop")
@@ -84,8 +105,12 @@ process_lock = threading.Lock()
 worker_thread: threading.Thread | None = None
 
 # TTS Backend selection (env-configurable)
-# Options: "chatterbox" (local neural, 11GB), "google" (cloud, needs API key), "macos" (built-in)
+# Options: "kokoro" (local MLX, 82M), "chatterbox" (local neural, 11GB), "google" (cloud, needs API key), "macos" (built-in)
 TTS_BACKEND = os.getenv("TTS_BACKEND", "macos").lower()
+
+# Kokoro MLX configuration (for TTS_BACKEND=kokoro)
+KOKORO_VOICE = os.getenv("KOKORO_VOICE", "af_heart")  # Default: American English female
+KOKORO_SPEED = float(os.getenv("KOKORO_SPEED", "1.0"))
 
 # Chatterbox configuration (for TTS_BACKEND=chatterbox)
 CHATTERBOX_URL = os.getenv("CHATTERBOX_URL", "http://127.0.0.1:8123")
@@ -96,6 +121,15 @@ DEFAULT_VOICE = os.getenv("DEFAULT_VOICE", "female_voice")
 GOOGLE_CLOUD_API_KEY = os.getenv("GOOGLE_CLOUD_API_KEY", "")
 GOOGLE_VOICE = os.getenv("GOOGLE_VOICE", "en-US-Neural2-F")  # Neural2 voices are in free tier
 GOOGLE_LANGUAGE = os.getenv("GOOGLE_LANGUAGE", "en-US")
+
+# Kokoro TTS instance (lazy-loaded)
+_kokoro_tts = None
+_kokoro_lock = threading.Lock()
+
+# Log configuration at startup
+logger.info(f"TTS Backend: {TTS_BACKEND}")
+if TTS_BACKEND == "kokoro":
+    logger.info(f"Kokoro voice: {KOKORO_VOICE}, speed: {KOKORO_SPEED}")
 
 # Health check cache to avoid blocking worker thread
 _last_health_check = 0.0
@@ -166,6 +200,117 @@ def stop_chatterbox() -> bool:
 def google_tts_available() -> bool:
     """Check if Google Cloud TTS is configured."""
     return bool(GOOGLE_CLOUD_API_KEY) and TTS_BACKEND == "google"
+
+
+def kokoro_available() -> bool:
+    """Check if Kokoro MLX TTS is available."""
+    if TTS_BACKEND != "kokoro":
+        return False
+    try:
+        from mlx_audio_tts import HAS_MLX_AUDIO
+        return HAS_MLX_AUDIO
+    except ImportError:
+        return False
+
+
+def get_kokoro_tts():
+    """Get or create Kokoro TTS instance (singleton)."""
+    global _kokoro_tts
+    with _kokoro_lock:
+        if _kokoro_tts is None:
+            try:
+                from mlx_audio_tts import MLXAudioTTS
+
+                # Validate voice, fallback to default if invalid
+                voice_to_use = KOKORO_VOICE
+                if voice_to_use not in MLXAudioTTS.VOICES:
+                    logger.warning(f"Invalid KOKORO_VOICE '{voice_to_use}', using 'af_heart'")
+                    voice_to_use = "af_heart"
+
+                _kokoro_tts = MLXAudioTTS(voice=voice_to_use, speed=KOKORO_SPEED)
+                logger.info(f"Kokoro TTS initialized: voice={voice_to_use}, speed={KOKORO_SPEED}")
+            except Exception as e:
+                logger.error(f"Failed to initialize Kokoro TTS: {e}")
+                return None
+        return _kokoro_tts
+
+
+def speak_with_kokoro(text: str, blocking: bool = True, voice: str = None) -> bool:
+    """
+    Speak using Kokoro MLX TTS.
+    Returns True if successful, False if unavailable.
+    """
+    global current_afplay
+    tts = get_kokoro_tts()
+    if tts is None:
+        return False
+
+    try:
+        import soundfile as sf
+
+        # Use specified voice, or configured KOKORO_VOICE, or instance default
+        if voice and voice in tts.VOICES:
+            use_voice = voice
+        else:
+            use_voice = KOKORO_VOICE if KOKORO_VOICE in tts.VOICES else tts.voice
+
+        logger.debug(f"Kokoro TTS using voice: {use_voice}")
+
+        # Synthesize audio
+        audio_array, sr = tts.synthesize(text, voice=use_voice)
+
+        # Save to temp file and play with afplay
+        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False, prefix="kokoro_tts_") as f:
+            sf.write(f.name, audio_array, sr)
+            temp_path = f.name
+
+        try:
+            # Clear stale stop signals before starting playback
+            check_and_clear_stop_signal()
+
+            if blocking:
+                with process_lock:
+                    current_afplay = subprocess.Popen(
+                        ["afplay", temp_path],
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL
+                    )
+                # Poll for completion while checking stop signal
+                while current_afplay.poll() is None:
+                    if check_and_clear_stop_signal():
+                        current_afplay.terminate()
+                        break
+                    time.sleep(0.05)  # Check every 50ms
+                with process_lock:
+                    current_afplay = None
+            else:
+                subprocess.Popen(
+                    ["afplay", temp_path],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL
+                )
+        finally:
+            if blocking:
+                try:
+                    os.unlink(temp_path)
+                except:
+                    pass
+
+        return True
+    except Exception as e:
+        logger.error(f"Kokoro TTS error: {e}")
+        return False
+
+
+def stop_kokoro():
+    """Stop any Kokoro playback (via afplay)."""
+    global current_afplay
+    with process_lock:
+        if current_afplay and current_afplay.poll() is None:
+            current_afplay.terminate()
+            current_afplay = None
+            return True
+    return False
 
 
 def speak_with_google(text: str, blocking: bool = True) -> bool:
@@ -304,6 +449,13 @@ def speech_worker():
         # Remove macOS-specific silence markup for neural backends
         clean_text = text.replace(f" [[slnc {TRAILING_SILENCE_MS}]]", "")
 
+        # Try Kokoro MLX TTS first (if configured)
+        if use_neural and kokoro_available():
+            if speak_with_kokoro(clean_text, blocking=True, voice=voice):
+                speech_queue.task_done()
+                continue
+            # Fall through to other backends if Kokoro fails
+
         # Try Google Cloud TTS (if configured)
         if use_neural and google_tts_available():
             if speak_with_google(clean_text, blocking=True):
@@ -373,13 +525,17 @@ def speak(text: str, voice: str | None = None, speed: float = 1.0) -> str:
     rate = int(speed * 175)  # 175 words/min = normal speed
 
     # Determine if we should use neural TTS (default backend or explicit request)
-    use_neural = voice is None or voice.lower() in ("chatterbox", "google")
+    # Check if voice is a Kokoro voice ID (2-character prefix like af_, bf_, ff_, etc.)
+    is_kokoro_voice = voice and len(voice) >= 3 and voice[1] in "mf" and voice[2] == "_"
+    use_neural = voice is None or voice.lower() in ("chatterbox", "google", "kokoro") or is_kokoro_voice
     macos_voice = None if use_neural else voice
 
     # Add trailing silence so the last word is fully heard (for macOS voices)
     text_with_silence = f"{text} [[slnc {TRAILING_SILENCE_MS}]]"
 
-    speech_queue.put((text_with_silence, macos_voice, rate, use_neural))
+    # Pass Kokoro voice ID if specified
+    neural_voice = voice if is_kokoro_voice else None
+    speech_queue.put((text_with_silence, neural_voice if use_neural else macos_voice, rate, use_neural))
     logger.debug(f"Queued message, queue size: {speech_queue.qsize()}")
 
     backend_name = TTS_BACKEND if use_neural else voice
@@ -394,13 +550,17 @@ def speak_and_wait(text: str, voice: str | None = None, speed: float = 1.1) -> s
     rate = int(speed * 175)  # 175 words/min = normal speed
 
     # Determine if we should use neural TTS (default backend or explicit request)
-    use_neural = voice is None or voice.lower() in ("chatterbox", "google")
+    # Check if voice is a Kokoro voice ID (2-character prefix like af_, bf_, ff_, etc.)
+    is_kokoro_voice = voice and len(voice) >= 3 and voice[1] in "mf" and voice[2] == "_"
+    use_neural = voice is None or voice.lower() in ("chatterbox", "google", "kokoro") or is_kokoro_voice
     macos_voice = None if use_neural else voice
 
     # Add trailing silence so the last word is fully heard (for macOS voices)
     text_with_silence = f"{text} [[slnc {TRAILING_SILENCE_MS}]]"
 
-    speech_queue.put((text_with_silence, macos_voice, rate, use_neural))
+    # Pass Kokoro voice ID if specified
+    neural_voice = voice if is_kokoro_voice else None
+    speech_queue.put((text_with_silence, neural_voice if use_neural else macos_voice, rate, use_neural))
     logger.debug(f"Queued message, queue size: {speech_queue.qsize()}")
 
     # Wait for the queue to be processed
@@ -435,6 +595,10 @@ def stop_speaking() -> str:
     # Stop Chatterbox playback (only if enabled)
     if USE_CHATTERBOX:
         stop_chatterbox()
+
+    # Stop Kokoro playback (if enabled)
+    if TTS_BACKEND == "kokoro":
+        stop_kokoro()
 
     stopped = False
     with process_lock:

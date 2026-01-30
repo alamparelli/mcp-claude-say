@@ -119,5 +119,33 @@ speak("The Controller bridges the two. It receives user actions, calls the Model
 
 ## Default Parameters
 
-- **Voice**: Siri/system voice (don't specify)
+- **Voice**: Default from TTS backend (don't specify unless switching voice)
 - **Speed**: 1.1 in brief mode, 1.0 in brainstorming and complete modes
+
+## TTS Backends
+
+The TTS backend is configured in `~/.mcp-claude-say/.env`:
+
+| Backend | Description |
+|---------|-------------|
+| `macos` | Native macOS `say` command (default, instant, offline) |
+| `kokoro` | Kokoro MLX - 54 neural voices, 9 languages, runs locally on Apple Silicon |
+| `google` | Google Cloud TTS - neural voices, requires API key |
+
+### Kokoro Voices (if TTS_BACKEND=kokoro)
+
+Pass voice ID as the `voice` parameter to use a specific voice:
+
+| Language | Voice Examples |
+|----------|---------------|
+| American English | `af_heart` (default), `af_nova`, `am_adam`, `am_echo` |
+| British English | `bf_emma`, `bf_alice`, `bm_george`, `bm_daniel` |
+| French | `ff_siwis` |
+| Spanish | `ef_dora`, `em_alex` |
+| Italian | `if_sara`, `im_nicola` |
+| Portuguese | `pf_dora`, `pm_alex` |
+| Japanese | `jf_alpha`, `jm_kumo` |
+| Chinese | `zf_xiaoxiao`, `zm_yunxi` |
+| Hindi | `hf_alpha`, `hm_omega` |
+
+Example: `speak("Bonjour!", voice="ff_siwis")` for French.
