@@ -19,11 +19,16 @@ import numpy as np
 
 try:
     from mlx_audio.tts.generate import generate_audio
-    from mlx_audio.tts.models.kokoro import KokoroPipeline
     from mlx_audio.tts.utils import load_model
+    try:
+        from mlx_audio.tts.models.kokoro import KokoroPipeline
+    except ImportError:
+        # KokoroPipeline might not be available if misaki is missing
+        KokoroPipeline = None
     HAS_MLX_AUDIO = True
 except ImportError:
     HAS_MLX_AUDIO = False
+    KokoroPipeline = None
 
 
 class MLXAudioTTS:
@@ -84,7 +89,7 @@ class MLXAudioTTS:
         self._model = None
         self._pipeline = None
 
-    def _load_model(self) -> KokoroPipeline:
+    def _load_model(self):
         """Load and cache the model."""
         if self._pipeline is None:
             self._model = load_model(self.model_id)
