@@ -46,20 +46,22 @@ Natural-sounding voices with zero storage footprint.
 2. Enable the [Text-to-Speech API](https://console.cloud.google.com/apis/library/texttospeech.googleapis.com)
 3. Create an API key at [APIs & Services > Credentials](https://console.cloud.google.com/apis/credentials)
 
-**Configure:**
+**Configure via installer (recommended):**
 
-Add to your shell profile (`~/.zshrc` or `~/.bashrc`):
+Run `./install.sh` and select "Google Cloud TTS" when prompted. The installer will guide you through entering your API key and selecting a voice.
+
+**Or configure manually:**
+
+Edit `~/.mcp-claude-say/.env`:
 
 ```bash
-export TTS_BACKEND="google"
-export GOOGLE_CLOUD_API_KEY="your-api-key-here"
-
-# Optional: change voice and language (defaults: en-US-Neural2-F, en-US)
-export GOOGLE_VOICE="en-GB-Chirp3-HD-Erinome"  # British female
-export GOOGLE_LANGUAGE="en-GB"
+TTS_BACKEND=google
+GOOGLE_CLOUD_API_KEY=your-api-key-here
+GOOGLE_VOICE=en-US-Neural2-F
+GOOGLE_LANGUAGE=en-US
 ```
 
-Then restart Claude Code or run `source ~/.zshrc`.
+Then restart Claude Code.
 
 **Example Voices:**
 
@@ -131,12 +133,49 @@ Or if you've already cloned the repo:
 ./install.sh
 ```
 
+The interactive installer will guide you through:
+1. **STT backend selection** - Parakeet MLX or Apple SpeechAnalyzer
+2. **TTS backend selection** - macOS say or Google Cloud TTS
+3. **Google Cloud setup** (if selected) - API key and voice selection
+
 ### What the installer does
 
 1. Creates a Python virtual environment
 2. Installs dependencies (MCP, Parakeet MLX, sounddevice, pynput)
-3. Installs two skills: `/speak` and `/conversation`
-4. Configures both MCP servers in Claude Code settings
+3. **Creates `~/.mcp-claude-say/.env`** with your TTS configuration
+4. Installs two skills: `/speak` and `/conversation`
+5. Configures both MCP servers in Claude Code settings
+
+### Configuration File
+
+After installation, your TTS settings are stored in `~/.mcp-claude-say/.env`:
+
+```bash
+# TTS Backend: macos, google
+TTS_BACKEND=macos
+
+# Google Cloud TTS settings (only used if TTS_BACKEND=google)
+GOOGLE_CLOUD_API_KEY=your-api-key
+GOOGLE_VOICE=en-US-Neural2-F
+GOOGLE_LANGUAGE=en-US
+```
+
+Edit this file and restart Claude Code to change settings. See `env.template` for all options.
+
+### CLI Options
+
+For scripted/automated installation:
+
+```bash
+# Install with macOS TTS (default)
+./install.sh --parakeet --tts-macos
+
+# Install with Google Cloud TTS
+./install.sh --parakeet --tts-google --google-api-key "YOUR_API_KEY"
+
+# TTS only mode (no STT)
+./install.sh --tts-only --tts-google
+```
 
 ## Usage
 
@@ -221,6 +260,7 @@ The installer configures two MCP servers:
 
 ```
 ~/.mcp-claude-say/
+├── .env                   # TTS configuration (TTS_BACKEND, GOOGLE_CLOUD_API_KEY, etc.)
 ├── mcp_server.py          # TTS server
 ├── listen/                # STT module
 │   ├── mcp_server.py      # STT server
@@ -241,6 +281,8 @@ The installer configures two MCP servers:
 ```bash
 ./uninstall.sh
 ```
+
+The uninstaller will ask if you want to remove cached models (Parakeet MLX ~2.3GB). Choose "Keep models" for faster reinstallation later, or "Remove everything" to free up disk space.
 
 ## Troubleshooting
 
