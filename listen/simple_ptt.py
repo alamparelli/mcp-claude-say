@@ -327,6 +327,11 @@ def get_simple_ptt(
             vad_silence_ms=vad_silence_ms,
             vad_threshold=vad_threshold,
         )
+
+    # Always update callback (important for auto-start to work correctly)
+    if on_transcription_ready is not None:
+        _simple_ptt.on_transcription_ready = on_transcription_ready
+
     return _simple_ptt
 
 

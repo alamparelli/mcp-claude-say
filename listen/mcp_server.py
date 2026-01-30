@@ -29,18 +29,27 @@ from .ptt_controller import (
 log.debug("ptt_controller imported")
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
-from shared.coordination import signal_stop_speaking, is_speaking
+from shared.coordination import (
+    signal_stop_speaking, is_speaking,
+    wait_for_tts_complete, clear_tts_complete_signal
+)
 log.debug("shared.coordination imported")
 
 
 mcp = FastMCP("claude-listen")
 log.info(f"FastMCP instance created - logs at {LOG_FILE}")
 
+# Phase 2 defaults
+DEFAULT_ECHO_DELAY_MS = 400  # Delay after TTS before starting recording (echo prevention)
+
 # State
 _transcription_ready = threading.Event()
 _last_transcription: Optional[str] = None
 _current_status: str = "ready"  # ready, recording, transcribing
 _auto_stop_enabled: bool = False  # Track if auto_stop mode is active
+_auto_start_enabled: bool = False  # Track if auto_start mode is active (Phase 2)
+_auto_start_thread: Optional[threading.Thread] = None  # Thread waiting for TTS completion
+_echo_delay_ms: int = DEFAULT_ECHO_DELAY_MS
 
 
 def _on_transcription_ready(text: str) -> None:
@@ -75,15 +84,15 @@ def _ptt_start_recording() -> None:
     # If auto_stop is enabled, start a background thread to wait for VAD
     if _auto_stop_enabled:
         def auto_stop_waiter():
-            global _current_status
             log.info("Auto-stop waiter thread started")
             # The recorder will call stop() internally when VAD triggers
+            # This also triggers transcription and callback which sets _current_status
             triggered = recorder.wait_for_auto_stop(timeout=120.0)
             if triggered:
-                log.info("Auto-stop completed successfully")
+                log.info("Auto-stop completed successfully (transcription done via callback)")
             else:
                 log.warning("Auto-stop timed out")
-            _current_status = "transcribing"
+            # NOTE: Don't set _current_status here - callback already handles it
 
         waiter_thread = threading.Thread(target=auto_stop_waiter, daemon=True)
         waiter_thread.start()
@@ -106,11 +115,50 @@ def _ptt_stop_recording() -> None:
         log.info("Recording already stopped (likely by VAD auto-stop)")
 
 
+def _auto_start_waiter():
+    """
+    Background thread that waits for TTS completion signal and auto-starts recording.
+
+    This implements Phase 2: Auto-start listening after TTS completes.
+    """
+    import time
+    global _current_status, _auto_start_enabled
+
+    log.info("Auto-start waiter thread started")
+
+    while _auto_start_enabled:
+        # Wait for TTS completion signal
+        if wait_for_tts_complete(timeout=5.0):
+            log.info(f"TTS complete! Waiting {_echo_delay_ms}ms for echo prevention...")
+
+            # Echo prevention delay
+            time.sleep(_echo_delay_ms / 1000.0)
+
+            # Check if still in auto-start mode (user might have stopped PTT)
+            if not _auto_start_enabled:
+                log.info("Auto-start disabled during echo delay, skipping")
+                continue
+
+            # Check if already recording (user might have manually started)
+            recorder = get_simple_ptt(auto_stop=_auto_stop_enabled)
+            if recorder.is_recording:
+                log.info("Already recording, skipping auto-start")
+                continue
+
+            # Auto-start recording
+            log.info("Auto-starting recording after TTS completion")
+            _ptt_start_recording()
+
+    log.info("Auto-start waiter thread exiting")
+
+
 @mcp.tool()
 def start_ptt_mode(
     key: str = "cmd_r",
     auto_stop: bool = False,
     vad_silence_ms: int = DEFAULT_VAD_SILENCE_MS,
+    auto_start: bool = False,
+    echo_delay_ms: int = DEFAULT_ECHO_DELAY_MS,
 ) -> str:
     """Start PTT with hotkey toggle. Set auto_stop=True for VAD-based automatic stop when speech ends.
 
@@ -118,9 +166,11 @@ def start_ptt_mode(
         key: Hotkey to toggle recording. Keys: cmd/alt/ctrl/shift(_l/_r), f13-f15, space. Combos: mod+key
         auto_stop: If True, recording stops automatically when silence is detected (VAD)
         vad_silence_ms: Silence duration in ms to trigger auto-stop (default: 1500ms)
+        auto_start: If True, recording starts automatically after TTS completion (Phase 2)
+        echo_delay_ms: Delay in ms after TTS before starting recording (echo prevention, default: 400ms)
     """
-    global _auto_stop_enabled
-    log.info(f"start_ptt_mode called with key={key}, auto_stop={auto_stop}, vad_silence_ms={vad_silence_ms}")
+    global _auto_stop_enabled, _auto_start_enabled, _auto_start_thread, _echo_delay_ms
+    log.info(f"start_ptt_mode called with key={key}, auto_stop={auto_stop}, vad_silence_ms={vad_silence_ms}, auto_start={auto_start}, echo_delay_ms={echo_delay_ms}")
 
     try:
         existing = get_ptt_controller()
@@ -129,8 +179,13 @@ def start_ptt_mode(
             log.info(msg)
             return msg
 
-        # Store auto_stop setting for use in callbacks
+        # Store settings for use in callbacks
         _auto_stop_enabled = auto_stop
+        _auto_start_enabled = auto_start
+        _echo_delay_ms = echo_delay_ms
+
+        # Clear any stale TTS complete signal
+        clear_tts_complete_signal()
 
         log.info(f"Creating PTT controller with key={key}")
         config = PTTConfig(
@@ -143,13 +198,27 @@ def start_ptt_mode(
         log.info("PTT controller created, starting...")
         controller.start()
 
+        # Phase 2: Start auto-start waiter thread if enabled
+        if auto_start:
+            _auto_start_thread = threading.Thread(target=_auto_start_waiter, daemon=True)
+            _auto_start_thread.start()
+            log.info("Auto-start waiter thread launched")
+
         key_display = key.replace('_', ' ').title()
 
+        # Build mode description
+        mode_parts = []
         if auto_stop:
-            mode_desc = f"auto-stop mode (VAD silence: {vad_silence_ms}ms)"
+            mode_parts.append(f"auto-stop (VAD: {vad_silence_ms}ms)")
+        if auto_start:
+            mode_parts.append(f"auto-start (delay: {echo_delay_ms}ms)")
+        mode_desc = ", ".join(mode_parts) if mode_parts else "manual mode"
+
+        if auto_start and auto_stop:
+            instruction = f"Press {key_display} to START first recording. After that, conversation flows automatically!"
+        elif auto_stop:
             instruction = f"Press {key_display} to START recording. Recording will STOP AUTOMATICALLY when you stop speaking."
         else:
-            mode_desc = "manual mode"
             instruction = f"Press {key_display} to toggle recording on/off."
 
         msg = f"""PTT mode activated ({mode_desc}).
@@ -159,7 +228,7 @@ def start_ptt_mode(
    System Settings → Privacy & Security → Accessibility → Enable your terminal app (VSCode, Terminal, Cursor, etc.)
    Then restart the app."""
 
-        log.info(f"PTT mode activated: key={key}, auto_stop={auto_stop}")
+        log.info(f"PTT mode activated: key={key}, auto_stop={auto_stop}, auto_start={auto_start}")
         return msg
 
     except Exception as e:
@@ -170,7 +239,7 @@ def start_ptt_mode(
 @mcp.tool()
 def stop_ptt_mode() -> str:
     """Stop PTT and active recording."""
-    global _auto_stop_enabled
+    global _auto_stop_enabled, _auto_start_enabled, _auto_start_thread
     log.info("stop_ptt_mode called")
 
     controller = get_ptt_controller()
@@ -184,8 +253,13 @@ def stop_ptt_mode() -> str:
     log.info("Destroying SimplePTT (releases mic)...")
     destroy_simple_ptt()
 
-    # Reset auto_stop state
+    # Reset auto_stop and auto_start state
     _auto_stop_enabled = False
+    _auto_start_enabled = False  # This will cause the waiter thread to exit
+    _auto_start_thread = None
+
+    # Clear any pending TTS complete signal
+    clear_tts_complete_signal()
 
     # Memory optimization: force garbage collection to free buffers
     gc.collect()
@@ -196,16 +270,22 @@ def stop_ptt_mode() -> str:
 
 @mcp.tool()
 def get_ptt_status() -> str:
-    """Get PTT status: inactive/ready/recording/transcribing. Includes auto_stop indicator if enabled."""
-    global _auto_stop_enabled
+    """Get PTT status: inactive/ready/recording/transcribing. Includes auto_stop/auto_start indicators if enabled."""
+    global _auto_stop_enabled, _auto_start_enabled
     controller = get_ptt_controller()
 
     if controller is None or not controller.is_active:
         return "inactive"
 
     status = _current_status
+    modes = []
     if _auto_stop_enabled:
-        status = f"{status} (auto_stop)"
+        modes.append("auto_stop")
+    if _auto_start_enabled:
+        modes.append("auto_start")
+
+    if modes:
+        status = f"{status} ({', '.join(modes)})"
 
     return status
 
@@ -213,7 +293,7 @@ def get_ptt_status() -> str:
 @mcp.tool()
 def interrupt_conversation(reason: str = "typed_input") -> str:
     """Stop TTS + PTT cleanly (idempotent). Call on typed input during voice conversation."""
-    global _current_status, _last_transcription, _auto_stop_enabled
+    global _current_status, _last_transcription, _auto_stop_enabled, _auto_start_enabled, _auto_start_thread
 
     # Idempotency: early-exit if already idle
     controller = get_ptt_controller()
@@ -235,7 +315,12 @@ def interrupt_conversation(reason: str = "typed_input") -> str:
     # 3. Clear pending transcription states
     _current_status = "ready"
     _auto_stop_enabled = False
+    _auto_start_enabled = False  # Stop auto-start waiter thread
+    _auto_start_thread = None
     _transcription_ready.set()  # Unblock any waiting calls
+
+    # 4. Clear any pending TTS complete signal
+    clear_tts_complete_signal()
 
     log.info("Conversation interrupted - system idle")
     return "Conversation interrupted. Voice mode stopped."
@@ -249,6 +334,15 @@ def get_segment_transcription(wait: bool = True, timeout: float = 120.0) -> str:
     controller = get_ptt_controller()
     if controller is None or not controller.is_active:
         return "[PTT mode not active. Use start_ptt_mode() first.]"
+
+    # Auto-restart recording if not active and auto_start is enabled
+    # This handles the case where get_segment_transcription is called twice
+    # and the auto-start signal was missed
+    if _auto_start_enabled and _current_status == "ready":
+        recorder = get_simple_ptt(auto_stop=_auto_stop_enabled)
+        if not recorder.is_recording:
+            log.info("get_segment_transcription: auto-restarting recording (fallback)")
+            _ptt_start_recording()
 
     if wait:
         _transcription_ready.clear()
@@ -271,6 +365,7 @@ def get_segment_transcription(wait: bool = True, timeout: float = 120.0) -> str:
 
 if __name__ == "__main__":
     log.info("Starting MCP server via mcp.run()...")
-    log.info("Available tools: start_ptt_mode (with auto_stop), stop_ptt_mode, get_ptt_status, get_segment_transcription, interrupt_conversation")
-    log.info("VAD auto-stop: Use start_ptt_mode(auto_stop=True) to enable automatic end-of-speech detection")
+    log.info("Available tools: start_ptt_mode (with auto_stop/auto_start), stop_ptt_mode, get_ptt_status, get_segment_transcription, interrupt_conversation")
+    log.info("Phase 1 - VAD auto-stop: Use start_ptt_mode(auto_stop=True) to enable automatic end-of-speech detection")
+    log.info("Phase 2 - Auto-start: Use start_ptt_mode(auto_start=True) to auto-start recording after TTS completes")
     mcp.run()

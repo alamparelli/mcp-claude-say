@@ -28,8 +28,9 @@ except ImportError:
         log.setLevel(logging.DEBUG)
 
 
-# Signal file for stop communication
+# Signal files for coordination
 STOP_SIGNAL_FILE = Path("/tmp/claude-voice-stop")
+TTS_COMPLETE_SIGNAL_FILE = Path("/tmp/claude-tts-complete")
 
 
 def signal_stop_speaking() -> bool:
@@ -135,6 +136,73 @@ def clear_stop_signal() -> None:
     if STOP_SIGNAL_FILE.exists():
         try:
             STOP_SIGNAL_FILE.unlink()
+        except Exception:
+            pass
+
+
+# ============================================================================
+# Phase 2: TTS Completion Signaling (Auto-Start after TTS)
+# ============================================================================
+
+def signal_tts_complete() -> bool:
+    """
+    Signal that TTS has completed speaking.
+
+    Called by claude-say when speak_and_wait() finishes.
+    Claude-listen monitors this signal to auto-start recording.
+
+    Returns:
+        True if signal was sent successfully
+    """
+    log.info("signal_tts_complete() called")
+    try:
+        TTS_COMPLETE_SIGNAL_FILE.touch()
+        log.info(f"TTS complete signal created: {TTS_COMPLETE_SIGNAL_FILE}")
+        return True
+    except Exception as e:
+        log.error(f"Error creating TTS complete signal: {e}")
+        return False
+
+
+def wait_for_tts_complete(timeout: float = 30.0) -> bool:
+    """
+    Wait for TTS completion signal.
+
+    Called by claude-listen when auto_start is enabled.
+    Blocks until signal is received or timeout.
+
+    Args:
+        timeout: Maximum time to wait in seconds
+
+    Returns:
+        True if signal received, False on timeout
+    """
+    import time
+
+    log.info(f"Waiting for TTS complete signal (timeout={timeout}s)...")
+    start_time = time.time()
+
+    while time.time() - start_time < timeout:
+        if TTS_COMPLETE_SIGNAL_FILE.exists():
+            log.info("TTS complete signal received!")
+            # Clear the signal
+            try:
+                TTS_COMPLETE_SIGNAL_FILE.unlink()
+            except Exception:
+                pass
+            return True
+        time.sleep(0.05)  # Poll every 50ms
+
+    log.warning(f"Timeout waiting for TTS complete signal after {timeout}s")
+    return False
+
+
+def clear_tts_complete_signal() -> None:
+    """Clear any pending TTS complete signal."""
+    if TTS_COMPLETE_SIGNAL_FILE.exists():
+        try:
+            TTS_COMPLETE_SIGNAL_FILE.unlink()
+            log.debug("Cleared stale TTS complete signal")
         except Exception:
             pass
 

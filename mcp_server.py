@@ -15,8 +15,12 @@ from queue import Queue, Empty
 from pathlib import Path
 from mcp.server.fastmcp import FastMCP
 
-# Add say/ to path for MLXAudioTTS import
+# Add say/ and shared/ to path for imports
 sys.path.insert(0, str(Path(__file__).parent / "say"))
+sys.path.insert(0, str(Path(__file__).parent))
+
+# Import coordination module for Phase 2 auto-start signaling
+from shared.coordination import signal_tts_complete
 
 # Configure espeak library path for French/multilingual phonemization (macOS)
 # This is set after load_env_file() so .env value takes precedence
@@ -573,6 +577,10 @@ def speak_and_wait(text: str, voice: str | None = None, speed: float = 1.1) -> s
 
     # Play ready sound to indicate listening is active
     play_ready_sound()
+
+    # Phase 2: Signal TTS completion for auto-start listening
+    signal_tts_complete()
+    logger.debug("TTS complete signal sent")
 
     backend_name = TTS_BACKEND if use_neural else voice
     return f"Speech completed ({backend_name})"

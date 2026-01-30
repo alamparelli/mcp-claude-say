@@ -11,11 +11,11 @@ MCP servers for Claude Code voice interaction:
 
 ## Architecture
 
-### Listen Module (PTT with optional VAD auto-stop)
+### Listen Module (PTT with VAD auto-stop + auto-start)
 ```
 listen/
 ├── audio.py                      # Audio capture with sounddevice
-├── simple_ptt.py                 # PTT recorder with optional VAD auto-stop
+├── simple_ptt.py                 # PTT recorder with VAD auto-stop
 ├── vad.py                        # Silero VAD for end-of-speech detection
 ├── ptt_controller.py             # Hotkey detection with pynput
 ├── parakeet_transcriber.py       # STT with Parakeet-MLX (recommended)
@@ -27,13 +27,13 @@ listen/
 ### MCP Tools (claude-listen)
 | Tool | Description |
 |------|-------------|
-| `start_ptt_mode(key?, auto_stop?, vad_silence_ms?)` | Start PTT. Set `auto_stop=True` for VAD-based automatic stop |
+| `start_ptt_mode(key?, auto_stop?, vad_silence_ms?, auto_start?, echo_delay_ms?)` | Start PTT. Use `auto_stop=True, auto_start=True` for seamless conversation |
 | `stop_ptt_mode()` | Stop PTT mode |
-| `get_ptt_status()` | Get current status (ready/recording/transcribing) + auto_stop indicator |
+| `get_ptt_status()` | Get current status (ready/recording/transcribing) + mode indicators |
 | `get_segment_transcription(wait?, timeout?)` | Get transcription (default timeout: 120s) |
 | `interrupt_conversation(reason?)` | Stop TTS + PTT cleanly (idempotent, call on typed input) |
 
-### VAD Auto-Stop Mode (Experimental)
+### Phase 1: VAD Auto-Stop Mode
 When `auto_stop=True`, recording stops automatically when silence is detected:
 ```python
 start_ptt_mode(key="cmd_r", auto_stop=True, vad_silence_ms=1500)
@@ -42,6 +42,16 @@ start_ptt_mode(key="cmd_r", auto_stop=True, vad_silence_ms=1500)
 - User speaks...
 - VAD detects 1.5s silence → Recording stops automatically → Transcription
 - Requires `torch` dependency (Silero VAD)
+
+### Phase 2: Auto-Start After TTS
+When `auto_start=True`, recording starts automatically after TTS completes:
+```python
+start_ptt_mode(key="cmd_r", auto_stop=True, auto_start=True, echo_delay_ms=400)
+```
+- User presses PTT key ONCE to start first recording
+- After VAD stops → Transcription → Claude responds (TTS)
+- TTS completes → 400ms delay (echo prevention) → Recording auto-starts
+- Conversation flows naturally without repeated key presses!
 
 ### Status Feedback
 `get_segment_transcription()` returns status messages to help identify the current state:
@@ -92,12 +102,12 @@ After running, restart Claude Code to test changes.
 
 ## Future Plans
 See `docs/AUTO_CONVERSATION_DESIGN.md` for:
-- Phase 2: Auto-start listening after TTS completes
+- ~~Phase 2: Auto-start listening after TTS completes~~ ✅ IMPLEMENTED
 - Phase 3: Full conversational mode with barge-in support
 
 ## Testing
 After `test-pipeline.sh`:
 1. Restart Claude Code
 2. Run `/conversation`
-3. Press Right Command to record
-4. Press again to stop and transcribe
+3. Press Right Command **ONCE** to start first recording
+4. Conversation flows automatically after that (VAD auto-stop + auto-start)

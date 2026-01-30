@@ -65,7 +65,7 @@ start_ptt_mode(
 
 ---
 
-## Phase 2: Auto-Start After TTS (PLANNED)
+## Phase 2: Auto-Start After TTS (IMPLEMENTED)
 
 ### Goal
 Automatically start listening when Claude finishes speaking.
@@ -167,48 +167,48 @@ def speak_and_wait(text: str) -> str:
 - Major refactor
 - Loses modularity
 
-### Recommended Approach for Phase 2
+### Implemented Approach for Phase 2
 
-**Use Solution B (Unix Domain Socket)** with graceful fallback to Solution A:
+**Used Solution A (Signal File)** for simplicity:
 
-1. Create `shared/coordinator.py` with socket-based coordination
-2. Modify `speak_and_wait()` to signal TTS completion
-3. Modify `start_ptt_mode()` to accept `auto_start=True` parameter
-4. When `auto_start=True`, listen for TTS completion signal → auto-start recording
+1. Extended `shared/coordination.py` with signal file at `/tmp/claude-tts-complete`
+2. Modified `speak_and_wait()` to call `signal_tts_complete()` after speech
+3. Modified `start_ptt_mode()` to accept `auto_start=True` and `echo_delay_ms` parameters
+4. When `auto_start=True`, background thread polls for TTS completion signal → auto-starts recording
 
-### Implementation Steps
+### Implementation Details
 
-1. **Create Coordinator Module**
+1. **Extended Coordinator Module**
    ```
-   shared/coordinator.py
-   ├── ConversationCoordinator class
-   ├── State machine (IDLE → SPEAKING → LISTENING → PROCESSING)
-   ├── Socket-based IPC
-   └── Event callbacks
+   shared/coordination.py
+   ├── signal_tts_complete()       # Called by claude-say when TTS ends
+   ├── wait_for_tts_complete()     # Called by claude-listen to wait for signal
+   └── clear_tts_complete_signal() # Cleanup
    ```
 
-2. **Modify claude-say**
+2. **Modified claude-say (mcp_server.py)**
    ```python
-   def speak_and_wait(text, signal_completion=True):
+   def speak_and_wait(text, voice, speed):
        # ... TTS ...
-       if signal_completion:
-           coordinator.on_tts_complete()
+       signal_tts_complete()  # Signal completion to claude-listen
+       return "Speech completed"
    ```
 
-3. **Modify claude-listen**
+3. **Modified claude-listen (listen/mcp_server.py)**
    ```python
-   def start_ptt_mode(auto_start=False):
+   def start_ptt_mode(auto_start=False, echo_delay_ms=400):
        if auto_start:
-           coordinator.on("TTS_COMPLETE", _auto_start_recording)
+           # Start background thread to wait for TTS completion
+           threading.Thread(target=_auto_start_waiter).start()
    ```
 
-4. **Add Delay After TTS**
+4. **Auto-Start Waiter Thread**
    ```python
-   TTS_TO_STT_DELAY_MS = 400  # Prevent echo
-
-   def _auto_start_recording():
-       time.sleep(TTS_TO_STT_DELAY_MS / 1000)
-       recorder.start()
+   def _auto_start_waiter():
+       while auto_start_enabled:
+           if wait_for_tts_complete(timeout=5.0):
+               time.sleep(echo_delay_ms / 1000)  # Echo prevention
+               recorder.start()  # Auto-start recording
    ```
 
 ### Echo Prevention
@@ -222,22 +222,20 @@ When auto-starting after TTS, the microphone might capture:
 2. **Initial VAD Gate**: Require 200ms+ of speech before accepting audio
 3. **Audio Fingerprinting**: Compare TTS output with mic input (advanced)
 
-### API Changes (Phase 2)
+### API (Phase 2 - Implemented)
 
 ```python
 # claude-listen
 start_ptt_mode(
     key="cmd_r",
-    auto_stop=True,      # Phase 1: VAD-based stop
-    auto_start=True,     # Phase 2: Auto-start after TTS
-    echo_delay_ms=400,   # Delay before starting recording
+    auto_stop=True,         # Phase 1: VAD-based stop
+    vad_silence_ms=1500,    # Silence duration for auto-stop
+    auto_start=True,        # Phase 2: Auto-start after TTS
+    echo_delay_ms=400,      # Delay before starting recording (echo prevention)
 )
 
-# claude-say
-speak_and_wait(
-    text="Hello!",
-    signal_completion=True,  # Signal to claude-listen
-)
+# claude-say - no API changes, speak_and_wait() automatically signals completion
+speak_and_wait(text="Hello!")  # Signals TTS complete internally
 ```
 
 ---
