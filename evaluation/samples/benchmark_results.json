@@ -1,0 +1,237 @@
+{
+  "timestamp": "2026-01-30 20:22:08",
+  "tests": [
+    {
+      "test_type": "streaming_latency",
+      "backend": "mlx_audio_streaming",
+      "voice": "af_heart",
+      "error": "Missing dependency: No module named 'misaki'"
+    },
+    {
+      "test_type": "streaming_latency",
+      "backend": "mlx_audio_streaming",
+      "voice": "am_adam",
+      "error": "Missing dependency: No module named 'misaki'"
+    },
+    {
+      "test_type": "generation",
+      "text_type": "short",
+      "text_length": 22,
+      "backend": "mlx_audio",
+      "voice": "af_heart",
+      "model": "Kokoro-82M",
+      "total_time_s": 0.0002893329947255552,
+      "output_file": null,
+      "file_size_kb": 0.0,
+      "ram_delta_mb": 0.078125,
+      "ram_total_mb": 76.796875
+    },
+    {
+      "test_type": "generation",
+      "text_type": "short",
+      "text_length": 22,
+      "backend": "mlx_audio",
+      "voice": "am_adam",
+      "model": "Kokoro-82M",
+      "total_time_s": 6.70420122332871e-05,
+      "output_file": null,
+      "file_size_kb": 0.0,
+      "ram_delta_mb": 0.0,
+      "ram_total_mb": 76.796875
+    },
+    {
+      "test_type": "generation",
+      "text_type": "short",
+      "text_length": 22,
+      "backend": "mlx_audio",
+      "voice": "af_bella",
+      "model": "Kokoro-82M",
+      "total_time_s": 4.6250002924352884e-05,
+      "output_file": null,
+      "file_size_kb": 0.0,
+      "ram_delta_mb": 0.0,
+      "ram_total_mb": 76.796875
+    },
+    {
+      "test_type": "generation",
+      "text_type": "short",
+      "text_length": 22,
+      "backend": "mlx_audio",
+      "voice": "am_echo",
+      "model": "Kokoro-82M",
+      "total_time_s": 3.687501884996891e-05,
+      "output_file": null,
+      "file_size_kb": 0.0,
+      "ram_delta_mb": 0.0,
+      "ram_total_mb": 76.796875
+    },
+    {
+      "test_type": "generation",
+      "text_type": "medium",
+      "text_length": 97,
+      "backend": "mlx_audio",
+      "voice": "af_heart",
+      "model": "Kokoro-82M",
+      "total_time_s": 3.44999716617167e-05,
+      "output_file": null,
+      "file_size_kb": 0.0,
+      "ram_delta_mb": 0.0,
+      "ram_total_mb": 76.796875
+    },
+    {
+      "test_type": "generation",
+      "text_type": "medium",
+      "text_length": 97,
+      "backend": "mlx_audio",
+      "voice": "am_adam",
+      "model": "Kokoro-82M",
+      "total_time_s": 3.179203486070037e-05,
+      "output_file": null,
+      "file_size_kb": 0.0,
+      "ram_delta_mb": 0.0,
+      "ram_total_mb": 76.796875
+    },
+    {
+      "test_type": "generation",
+      "text_type": "medium",
+      "text_length": 97,
+      "backend": "mlx_audio",
+      "voice": "af_bella",
+      "model": "Kokoro-82M",
+      "total_time_s": 3.087497316300869e-05,
+      "output_file": null,
+      "file_size_kb": 0.0,
+      "ram_delta_mb": 0.0,
+      "ram_total_mb": 76.796875
+    },
+    {
+      "test_type": "generation",
+      "text_type": "medium",
+      "text_length": 97,
+      "backend": "mlx_audio",
+      "voice": "am_echo",
+      "model": "Kokoro-82M",
+      "total_time_s": 2.9292015824466944e-05,
+      "output_file": null,
+      "file_size_kb": 0.0,
+      "ram_delta_mb": 0.0,
+      "ram_total_mb": 76.796875
+    },
+    {
+      "test_type": "generation",
+      "text_type": "long",
+      "text_length": 254,
+      "backend": "mlx_audio",
+      "voice": "af_heart",
+      "model": "Kokoro-82M",
+      "total_time_s": 2.8958020266145468e-05,
+      "output_file": null,
+      "file_size_kb": 0.0,
+      "ram_delta_mb": 0.0,
+      "ram_total_mb": 76.796875
+    },
+    {
+      "test_type": "generation",
+      "text_type": "long",
+      "text_length": 254,
+      "backend": "mlx_audio",
+      "voice": "am_adam",
+      "model": "Kokoro-82M",
+      "total_time_s": 3.0792027246207e-05,
+      "output_file": null,
+      "file_size_kb": 0.0,
+      "ram_delta_mb": 0.0,
+      "ram_total_mb": 76.8125
+    },
+    {
+      "test_type": "generation",
+      "text_type": "long",
+      "text_length": 254,
+      "backend": "mlx_audio",
+      "voice": "af_bella",
+      "model": "Kokoro-82M",
+      "total_time_s": 2.862501423805952e-05,
+      "output_file": null,
+      "file_size_kb": 0.0,
+      "ram_delta_mb": 0.0,
+      "ram_total_mb": 76.8125
+    },
+    {
+      "test_type": "generation",
+      "text_type": "long",
+      "text_length": 254,
+      "backend": "mlx_audio",
+      "voice": "am_echo",
+      "model": "Kokoro-82M",
+      "total_time_s": 3.029097570106387e-05,
+      "output_file": null,
+      "file_size_kb": 0.0,
+      "ram_delta_mb": 0.0,
+      "ram_total_mb": 76.8125
+    },
+    {
+      "test_type": "generation",
+      "text_type": "short",
+      "text_length": 22,
+      "backend": "macos_say",
+      "voice": "Samantha",
+      "total_time_s": 0.7368802080163732,
+      "output_file": "/Users/alessandrolamparelli/Dev/claude/mcp-claude-say/evaluation/samples/macos_Samantha_short.wav",
+      "file_size_kb": 75.8359375
+    },
+    {
+      "test_type": "generation",
+      "text_type": "short",
+      "text_length": 22,
+      "backend": "macos_say",
+      "voice": "Alex",
+      "total_time_s": 0.6565826659789309,
+      "output_file": "/Users/alessandrolamparelli/Dev/claude/mcp-claude-say/evaluation/samples/macos_Alex_short.wav",
+      "file_size_kb": 83.896484375
+    },
+    {
+      "test_type": "generation",
+      "text_type": "medium",
+      "text_length": 97,
+      "backend": "macos_say",
+      "voice": "Samantha",
+      "total_time_s": 1.184495416993741,
+      "output_file": "/Users/alessandrolamparelli/Dev/claude/mcp-claude-say/evaluation/samples/macos_Samantha_medium.wav",
+      "file_size_kb": 234.01953125
+    },
+    {
+      "test_type": "generation",
+      "text_type": "medium",
+      "text_length": 97,
+      "backend": "macos_say",
+      "voice": "Alex",
+      "total_time_s": 0.6809475000482053,
+      "output_file": "/Users/alessandrolamparelli/Dev/claude/mcp-claude-say/evaluation/samples/macos_Alex_medium.wav",
+      "file_size_kb": 243.998046875
+    },
+    {
+      "test_type": "generation",
+      "text_type": "long",
+      "text_length": 254,
+      "backend": "macos_say",
+      "voice": "Samantha",
+      "total_time_s": 0.708898916025646,
+      "output_file": "/Users/alessandrolamparelli/Dev/claude/mcp-claude-say/evaluation/samples/macos_Samantha_long.wav",
+      "file_size_kb": 641.5859375
+    },
+    {
+      "test_type": "generation",
+      "text_type": "long",
+      "text_length": 254,
+      "backend": "macos_say",
+      "voice": "Alex",
+      "total_time_s": 0.7223478750092909,
+      "output_file": "/Users/alessandrolamparelli/Dev/claude/mcp-claude-say/evaluation/samples/macos_Alex_long.wav",
+      "file_size_kb": 692.8984375
+    }
+  ],
+  "ram_summary": {
+    "current_rss_mb": 77.0,
+    "current_vms_mb": 401892.609375
+  }
+}
