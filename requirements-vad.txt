@@ -1,0 +1,11 @@
+# VAD (Voice Activity Detection) dependencies
+# Required for auto_stop mode in claude-listen
+# Install with: pip install -r requirements-vad.txt
+
+# PyTorch + torchaudio (required for Silero VAD)
+# Note: torch is a large dependency (~2GB with MPS support on Apple Silicon)
+# Silero VAD model is downloaded on first use (~2MB)
+torch
+torchaudio
+jinja2
+sympy>=1.13.3

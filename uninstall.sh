@@ -19,6 +19,7 @@ SKILL_CONVERSATION_DIR="$HOME/.claude/skills/conversation"
 CLAUDE_SETTINGS="$HOME/.claude.json"
 PARAKEET_CACHE="$HOME/.cache/huggingface/hub/models--mlx-community--parakeet-tdt-0.6b-v3"
 KOKORO_CACHE="$HOME/.cache/huggingface/hub/models--prince-canuma--Kokoro-82M"
+SILERO_CACHE="$HOME/.cache/torch/hub/snakers4_silero-vad_master"
 
 echo -e "${BLUE}============================================${NC}"
 echo -e "${BLUE}    mcp-claude-say Uninstaller${NC}"
@@ -28,22 +29,27 @@ echo ""
 # Check if models exist
 PARAKEET_SIZE=""
 KOKORO_SIZE=""
+SILERO_SIZE=""
 if [[ -d "$PARAKEET_CACHE" ]]; then
     PARAKEET_SIZE=$(du -sh "$PARAKEET_CACHE" 2>/dev/null | cut -f1)
 fi
 if [[ -d "$KOKORO_CACHE" ]]; then
     KOKORO_SIZE=$(du -sh "$KOKORO_CACHE" 2>/dev/null | cut -f1)
 fi
+if [[ -d "$SILERO_CACHE" ]]; then
+    SILERO_SIZE=$(du -sh "$SILERO_CACHE" 2>/dev/null | cut -f1)
+fi
 
 # Ask about model cleanup
 CLEANUP_MODELS=false
-if [[ -n "$PARAKEET_SIZE" || -n "$KOKORO_SIZE" ]]; then
+if [[ -n "$PARAKEET_SIZE" || -n "$KOKORO_SIZE" || -n "$SILERO_SIZE" ]]; then
     echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     echo -e "${CYAN}  Cached Models Cleanup${NC}"
     echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     echo ""
     [[ -n "$PARAKEET_SIZE" ]] && echo -e "Found Parakeet-MLX model cache: ${YELLOW}$PARAKEET_SIZE${NC}"
     [[ -n "$KOKORO_SIZE" ]] && echo -e "Found Kokoro TTS model cache:   ${YELLOW}$KOKORO_SIZE${NC}"
+    [[ -n "$SILERO_SIZE" ]] && echo -e "Found Silero VAD model cache:   ${YELLOW}$SILERO_SIZE${NC}"
     echo ""
     echo -e "  ${GREEN}1)${NC} Keep models (faster reinstall later)"
     echo -e "  ${GREEN}2)${NC} Remove everything (free up disk space)"
@@ -101,10 +107,15 @@ if [[ "$CLEANUP_MODELS" == true ]]; then
         rm -rf "$KOKORO_CACHE"
         echo -e "       ${GREEN}Removed Kokoro TTS cache ($KOKORO_SIZE freed)${NC}"
     fi
+    if [[ -d "$SILERO_CACHE" ]]; then
+        rm -rf "$SILERO_CACHE"
+        echo -e "       ${GREEN}Removed Silero VAD cache ($SILERO_SIZE freed)${NC}"
+    fi
 else
     echo -e "${YELLOW}[5/5]${NC} Keeping cached models"
     [[ -n "$PARAKEET_SIZE" ]] && echo -e "       Parakeet-MLX cache preserved at: $PARAKEET_CACHE"
     [[ -n "$KOKORO_SIZE" ]] && echo -e "       Kokoro TTS cache preserved at: $KOKORO_CACHE"
+    [[ -n "$SILERO_SIZE" ]] && echo -e "       Silero VAD cache preserved at: $SILERO_CACHE"
 fi
 
 echo ""

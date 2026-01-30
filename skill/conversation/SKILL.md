@@ -10,22 +10,22 @@ You now have access to both text-to-speech (claude-say) AND speech-to-text (clau
 
 ## Architecture
 
-Uses **simple Push-to-Talk (PTT)** mode:
+Uses **Push-to-Talk (PTT)** mode with **VAD auto-stop**:
 - Press hotkey to start recording
-- Press again to stop and transcribe
-- No automatic voice detection
-- Full control over when to record
+- **Recording stops automatically** when you stop speaking (VAD detection)
+- No need to press again to stop
+- Silence threshold: 1.5 seconds
 
 ## Available MCP Tools
 
-### claude-listen (STT - Push-to-Talk)
+### claude-listen (STT - Push-to-Talk with VAD)
 
 **Synchronous mode (blocking) - RECOMMENDED:**
 | Tool | Description |
 |------|-------------|
-| `start_ptt_mode(key?)` | Start PTT mode (default: Right Cmd) |
+| `start_ptt_mode(key?, auto_stop?, vad_silence_ms?)` | Start PTT mode. **Use auto_stop=True** for automatic stop on silence |
 | `stop_ptt_mode()` | Stop PTT mode |
-| `get_ptt_status()` | Get PTT state |
+| `get_ptt_status()` | Get PTT state (includes "auto_stop" indicator if enabled) |
 | `get_segment_transcription(wait?, timeout?)` | Wait for transcription (default timeout: 120s). Returns status: [Ready], [Recording...], [Transcribing...] |
 
 **Background mode (non-blocking) - Alternative:**
@@ -97,13 +97,13 @@ speak_and_wait("Final part that concludes the explanation.", speed=1)  # Only th
 
 ```
 ┌─────────────────────────────────────────────────┐
-│              Push-to-Talk Mode                  │
+│         Push-to-Talk with VAD Auto-Stop         │
 │                                                 │
 │  [Right Cmd] → Start recording                  │
 │       │                                         │
-│       │     (records continuously)              │
+│       │     (user speaks...)                    │
 │       │                                         │
-│  [Right Cmd] → Stop → Save → Transcribe         │
+│  [1.5s silence] → Auto-stop → Transcribe        │
 │       │                                         │
 │       ↓                                         │
 │  Claude responds vocally                        │
@@ -111,21 +111,21 @@ speak_and_wait("Final part that concludes the explanation.", speed=1)  # Only th
 ```
 
 1. User presses **Right Command** to start recording
-2. Audio is captured continuously
-3. User presses **Right Command** again to stop
+2. Audio is captured while user speaks
+3. **VAD detects 1.5s of silence → auto-stops recording**
 4. Audio is saved and transcribed with the configured STT engine
 5. Claude processes and responds **vocally**
 
 ## Starting Conversation Mode
 
 ```python
-# 1. Start PTT mode
-start_ptt_mode()  # Uses default key: cmd_r (Right Command)
+# 1. Start PTT mode with VAD auto-stop
+start_ptt_mode(auto_stop=True)  # VAD will auto-stop when you stop speaking
 
 # 2. Confirm vocally (short message only)
 speak_and_wait("Prêt.")
 
-# 3. Wait for transcription
+# 3. Wait for transcription (auto-stops when silence detected)
 transcription = get_segment_transcription(wait=True, timeout=120)
 
 # 4. Process and respond (use speak() for natural flow, speak_and_wait() at the end)
@@ -139,9 +139,12 @@ speak_and_wait("What would you like to know next?")  # Blocks before listening
 ## Conversation Loop
 
 ```python
+# Start with VAD auto-stop enabled
+start_ptt_mode(auto_stop=True)
+
 # Main loop
 while True:
-    # Wait for transcription
+    # Wait for transcription (VAD auto-stops when user finishes speaking)
     text = get_segment_transcription(wait=True, timeout=120)
 
     # Check for end command
@@ -157,6 +160,7 @@ while True:
     speak("I understand your question.")
     speak("Let me explain.")
     speak_and_wait("Does that make sense?")  # Last message blocks
+    # User presses key to start, VAD auto-stops when they finish
 
 # End session
 stop_ptt_mode()

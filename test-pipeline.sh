@@ -21,7 +21,13 @@ CYAN='\033[0;36m'
 NC='\033[0m' # No Color
 
 # Configuration
-ORIGINAL_DIR="$HOME/mcp-claude-say-original"
+# Use the directory where this script is located (or fallback to legacy path)
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [ -f "$SCRIPT_DIR/install.sh" ]; then
+    ORIGINAL_DIR="$SCRIPT_DIR"
+else
+    ORIGINAL_DIR="$HOME/mcp-claude-say-original"
+fi
 TEMP_DIR="/tmp/test-install"
 
 # Parse mode argument

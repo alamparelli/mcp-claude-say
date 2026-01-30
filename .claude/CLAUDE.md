@@ -11,26 +11,37 @@ MCP servers for Claude Code voice interaction:
 
 ## Architecture
 
-### Listen Module (Simple PTT)
+### Listen Module (PTT with optional VAD auto-stop)
 ```
 listen/
 ├── audio.py                      # Audio capture with sounddevice
-├── simple_ptt.py                 # Simple PTT recorder (no VAD)
+├── simple_ptt.py                 # PTT recorder with optional VAD auto-stop
+├── vad.py                        # Silero VAD for end-of-speech detection
 ├── ptt_controller.py             # Hotkey detection with pynput
 ├── parakeet_transcriber.py       # STT with Parakeet-MLX (recommended)
 ├── speechanalyzer_transcriber.py # STT with Apple SpeechAnalyzer (experimental)
 ├── transcriber_base.py           # Base transcriber interface
-└── mcp_server.py                 # MCP tools (4 tools only)
+└── mcp_server.py                 # MCP tools (5 tools)
 ```
 
 ### MCP Tools (claude-listen)
 | Tool | Description |
 |------|-------------|
-| `start_ptt_mode(key?)` | Start PTT (default: cmd_r) |
+| `start_ptt_mode(key?, auto_stop?, vad_silence_ms?)` | Start PTT. Set `auto_stop=True` for VAD-based automatic stop |
 | `stop_ptt_mode()` | Stop PTT mode |
-| `get_ptt_status()` | Get current status (ready/recording/transcribing) |
+| `get_ptt_status()` | Get current status (ready/recording/transcribing) + auto_stop indicator |
 | `get_segment_transcription(wait?, timeout?)` | Get transcription (default timeout: 120s) |
 | `interrupt_conversation(reason?)` | Stop TTS + PTT cleanly (idempotent, call on typed input) |
+
+### VAD Auto-Stop Mode (Experimental)
+When `auto_stop=True`, recording stops automatically when silence is detected:
+```python
+start_ptt_mode(key="cmd_r", auto_stop=True, vad_silence_ms=1500)
+```
+- User presses PTT key → Recording starts + VAD monitoring
+- User speaks...
+- VAD detects 1.5s silence → Recording stops automatically → Transcription
+- Requires `torch` dependency (Silero VAD)
 
 ### Status Feedback
 `get_segment_transcription()` returns status messages to help identify the current state:
@@ -77,6 +88,12 @@ After running, restart Claude Code to test changes.
 - pynput
 - parakeet-mlx (if using Parakeet backend)
 - Swift/Xcode (if using SpeechAnalyzer backend)
+- torch (if using VAD auto_stop mode)
+
+## Future Plans
+See `docs/AUTO_CONVERSATION_DESIGN.md` for:
+- Phase 2: Auto-start listening after TTS completes
+- Phase 3: Full conversational mode with barge-in support
 
 ## Testing
 After `test-pipeline.sh`:

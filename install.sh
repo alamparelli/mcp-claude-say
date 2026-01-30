@@ -30,6 +30,9 @@ REPO_URL="https://github.com/alamparelli/mcp-claude-say.git"
 # Installation mode (set by menu or argument)
 INSTALL_MODE=""  # tts-only, parakeet, speechanalyzer
 
+# VAD configuration (for auto-stop feature)
+INSTALL_VAD=false  # If true, install torch for Silero VAD
+
 # TTS configuration (set by menu)
 TTS_BACKEND="macos"
 GOOGLE_API_KEY=""
@@ -192,6 +195,36 @@ if [[ -z "$INSTALL_MODE" ]]; then
         *)
             echo -e "${RED}Invalid choice${NC}"
             exit 1
+            ;;
+    esac
+fi
+
+# ============================================
+# VAD Auto-Stop Option (only for STT modes)
+# ============================================
+if [[ "$INSTALL_MODE" != "tts-only" ]]; then
+    echo ""
+    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e "${CYAN}  VAD Auto-Stop Feature (Experimental)${NC}"
+    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo ""
+    echo -e "  VAD (Voice Activity Detection) enables automatic stop"
+    echo -e "  when you finish speaking - no need to press the key twice."
+    echo ""
+    echo -e "  ${YELLOW}Requires PyTorch (~2GB download)${NC}"
+    echo ""
+    echo -e "  ${GREEN}1)${NC} Skip VAD ${GREEN}(default)${NC} - Manual PTT (press to start/stop)"
+    echo -e "  ${GREEN}2)${NC} Install VAD - Auto-stop when you stop speaking"
+    echo ""
+    read -p "Enter choice [1-2] (default: 1): " vad_choice
+
+    case $vad_choice in
+        2)
+            INSTALL_VAD=true
+            echo -e "${GREEN}VAD auto-stop will be installed${NC}"
+            ;;
+        *)
+            INSTALL_VAD=false
             ;;
     esac
 fi
@@ -423,6 +456,7 @@ cp -r "$SOURCE_DIR/say" "$INSTALL_DIR/" 2>/dev/null || true
 # Copy requirements
 cp "$SOURCE_DIR/requirements-base.txt" "$INSTALL_DIR/"
 cp "$SOURCE_DIR/requirements-mlx-audio.txt" "$INSTALL_DIR/" 2>/dev/null || true
+cp "$SOURCE_DIR/requirements-vad.txt" "$INSTALL_DIR/" 2>/dev/null || true
 
 # Copy STT files based on mode
 if [[ "$INSTALL_MODE" != "tts-only" ]]; then
@@ -433,6 +467,7 @@ if [[ "$INSTALL_MODE" != "tts-only" ]]; then
     cp "$SOURCE_DIR/listen/audio.py" "$INSTALL_DIR/listen/"
     cp "$SOURCE_DIR/listen/logger.py" "$INSTALL_DIR/listen/"
     cp "$SOURCE_DIR/listen/simple_ptt.py" "$INSTALL_DIR/listen/"
+    cp "$SOURCE_DIR/listen/vad.py" "$INSTALL_DIR/listen/"  # VAD for auto-stop mode
     cp "$SOURCE_DIR/listen/ptt_controller.py" "$INSTALL_DIR/listen/"
     cp "$SOURCE_DIR/listen/transcriber_base.py" "$INSTALL_DIR/listen/"
     cp "$SOURCE_DIR/listen/mcp_server.py" "$INSTALL_DIR/listen/"
@@ -481,6 +516,17 @@ if [[ "$TTS_BACKEND" == "kokoro" ]]; then
     fi
 
     pip install --quiet -r "$INSTALL_DIR/requirements-mlx-audio.txt"
+
+    # Download spacy model for text processing
+    echo -e "       ${CYAN}Downloading spacy language model...${NC}"
+    python -m spacy download en_core_web_sm --quiet 2>/dev/null || true
+fi
+
+# Install VAD (torch + torchaudio) if requested
+if [[ "$INSTALL_VAD" == true ]]; then
+    echo -e "       ${CYAN}Installing PyTorch + torchaudio for VAD auto-stop (~2GB)...${NC}"
+    pip install --quiet torch torchaudio jinja2 "sympy>=1.13.3"
+    echo -e "       ${GREEN}PyTorch + torchaudio installed for VAD${NC}"
 fi
 
 # Build SpeechAnalyzer CLI if needed
@@ -625,6 +671,14 @@ if [[ "$INSTALL_MODE" != "tts-only" ]]; then
     }
 fi
 
+if [[ "$INSTALL_VAD" == true ]]; then
+    "$INSTALL_DIR/venv/bin/python" -c "import torch; import torchaudio; print('OK')" 2>/dev/null && {
+        echo -e "  ${GREEN}✓${NC} VAD auto-stop ready (Silero VAD)"
+    } || {
+        echo -e "  ${YELLOW}!${NC} VAD: Silero model will download on first use (~2MB)"
+    }
+fi
+
 # Summary
 echo ""
 echo -e "${GREEN}============================================${NC}"
@@ -633,6 +687,11 @@ echo -e "${GREEN}============================================${NC}"
 echo ""
 echo -e "STT Mode:     ${CYAN}$INSTALL_MODE${NC}"
 echo -e "TTS Backend:  ${CYAN}$TTS_BACKEND${NC}"
+if [[ "$INSTALL_VAD" == true ]]; then
+    echo -e "VAD Auto-Stop: ${GREEN}Enabled${NC} (Silero VAD)"
+else
+    echo -e "VAD Auto-Stop: ${YELLOW}Disabled${NC} (manual PTT)"
+fi
 if [[ "$TTS_BACKEND" == "kokoro" ]]; then
     echo -e "Voice:        ${CYAN}$KOKORO_VOICE${NC}"
     echo -e "${YELLOW}              (Model downloads on first use ~500MB)${NC}"
@@ -667,7 +726,12 @@ case $INSTALL_MODE in
         echo ""
         echo -e "${YELLOW}Push-to-Talk:${NC}"
         echo -e "  Default key: ${BLUE}Right Command${NC}"
-        echo -e "  Press once to start, press again to stop"
+        if [[ "$INSTALL_VAD" == true ]]; then
+            echo -e "  Press to start - ${GREEN}stops automatically when you stop speaking${NC}"
+            echo -e "  (VAD auto-stop enabled)"
+        else
+            echo -e "  Press once to start, press again to stop"
+        fi
         ;;
 esac
 

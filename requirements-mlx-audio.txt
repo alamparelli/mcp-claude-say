@@ -15,6 +15,8 @@ soundfile>=0.12.1
 # CRITICAL: misaki 0.8.x required - 0.9.x has compatibility bugs
 misaki>=0.8.0,<0.9.0
 num2words>=0.5.12
+phonemizer>=3.0.0
+espeakng-loader
 
-# Optional: spacy model for better text processing
-# Run after install: python -m spacy download en_core_web_sm
+# Required: spacy for text processing
+spacy>=3.0.0
