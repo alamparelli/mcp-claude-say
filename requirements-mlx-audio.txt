@@ -1,0 +1,48 @@
+# MLX-Audio TTS Dependencies for Kokoro-82M
+# ==========================================
+#
+# Installation: pip install -r requirements-mlx-audio.txt
+#
+# IMPORTANT: Use specific versions to avoid compatibility issues!
+#
+# Note: Model download (~2.3 GB) happens on first synthesis
+
+# Core MLX Framework
+mlx>=0.30.4
+mlx-metal>=0.30.4
+
+# MLX-Audio Package
+mlx-audio>=0.3.1
+
+# Audio Processing
+sounddevice>=0.5.3
+soundfile>=0.12.1
+numpy>=1.24
+miniaudio>=1.61
+pyloudnorm>=0.2.0
+
+# Model & Tokenization
+transformers>=5.0.0
+tokenizers>=0.22.0
+safetensors>=0.7.0
+sentencepiece>=0.2.1
+
+# Text Processing (for Kokoro phonemization)
+# CRITICAL: misaki 0.8.x required - 0.9.x has compatibility bugs
+misaki>=0.8.0,<0.9.0
+num2words>=0.5.12
+phonemizer>=3.1.0,<3.2.0
+espeakng_loader>=0.1.0
+spacy>=3.8.0
+
+# Utils
+tqdm>=4.67.0
+psutil>=6.0.0
+
+# Optional: Progress display
+huggingface_hub>=0.30.0
+
+# ==========================================
+# Post-installation: Download spacy model
+# python -m spacy download en_core_web_sm
+# ==========================================

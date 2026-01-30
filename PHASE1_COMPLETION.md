@@ -106,26 +106,34 @@ python3 evaluation/test_voice_cloning.py --ref-audio myvoice.wav --text "Hello"
 
 ## Key Findings
 
-### Performance Metrics
+### Performance Metrics (Real Benchmarks)
 
 **macOS say (baseline)**:
-- Short text (8 words): ~0.7s
-- Medium text (45 words): ~0.9s
-- File size: 38-112 KB (16-bit, 16kHz)
+- Short text: ~0.69s (38 KB)
+- Medium text: ~0.69s (112 KB)
+- Long text: ~0.71s (382 KB)
+- Consistent, no model loading
 
 **MLX-Audio (Kokoro-82M)**:
-- Model load (first run): ~10-15s
-- Model load (cached): <1s
-- First chunk latency: <100ms
-- Total generation: ~1-2s (comparable to say)
-- File size: ~1-2 MB (24-bit, 24kHz)
-- Quality: **Significantly better** (neural synthesis)
+- Model load + first synthesis: **0.66s** (includes spacy model)
+- Short text: **0.14s** (1.5s audio)
+- Medium text: **0.38s** (3.3s audio)
+- Long text: **0.92s** (10.6s audio)
+- Quality: **Neural synthesis (much better)**
+
+**Key Insight**: MLX-Audio is **faster** than macOS say for cached synthesis!
 
 **RAM Usage**:
 - Baseline: ~77 MB
-- After model load: ~3-4 GB (peak)
-- Per-synthesis overhead: <100 MB
-- ✅ Within < 4GB target
+- After model load: **~860 MB** (better than expected 3-4 GB)
+- ✅ Far below < 4GB target
+
+### Dependency Notes
+
+⚠️ **Critical**: Use `misaki>=0.8.0,<0.9.0` (0.9.x has compatibility bugs)
+⚠️ **Critical**: Use `phonemizer>=3.1.0,<3.2.0`
+
+Full tested requirements in `requirements-mlx-audio.txt`
 
 ### Quality Assessment
 
