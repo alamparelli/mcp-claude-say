@@ -308,6 +308,7 @@ if [[ "$INSTALL_MODE" != "tts-only" ]]; then
     # Copy common listen files
     cp "$SOURCE_DIR/listen/__init__.py" "$INSTALL_DIR/listen/" 2>/dev/null || echo "" > "$INSTALL_DIR/listen/__init__.py"
     cp "$SOURCE_DIR/listen/audio.py" "$INSTALL_DIR/listen/"
+    cp "$SOURCE_DIR/listen/logger.py" "$INSTALL_DIR/listen/"
     cp "$SOURCE_DIR/listen/simple_ptt.py" "$INSTALL_DIR/listen/"
     cp "$SOURCE_DIR/listen/ptt_controller.py" "$INSTALL_DIR/listen/"
     cp "$SOURCE_DIR/listen/transcriber_base.py" "$INSTALL_DIR/listen/"
@@ -509,7 +510,7 @@ case $INSTALL_MODE in
         echo -e "  3. Type ${BLUE}/conversation${NC} for full voice loop"
         echo ""
         echo -e "${YELLOW}Push-to-Talk:${NC}"
-        echo -e "  Default key: ${BLUE}Left Cmd + S${NC}"
+        echo -e "  Default key: ${BLUE}Right Command${NC}"
         echo -e "  Press once to start, press again to stop"
         ;;
 esac

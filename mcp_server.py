@@ -4,14 +4,25 @@
 import subprocess
 import threading
 import os
+import sys
 import time
 import tempfile
 import base64
 import urllib.request
 import json
+import logging
 from queue import Queue, Empty
 from pathlib import Path
 from mcp.server.fastmcp import FastMCP
+
+# Configure logging to stderr (visible in MCP logs)
+LOG_LEVEL = os.getenv("TTS_LOG_LEVEL", "WARNING").upper()
+logging.basicConfig(
+    level=getattr(logging, LOG_LEVEL, logging.WARNING),
+    format="[claude-say] %(levelname)s: %(message)s",
+    stream=sys.stderr
+)
+logger = logging.getLogger("claude-say")
 
 
 def load_env_file():
@@ -264,6 +275,7 @@ def clear_listen_segments():
 def speech_worker():
     """Worker thread that processes the speech queue sequentially."""
     global current_process
+    logger.info("Speech worker thread started")
     while True:
         try:
             item = speech_queue.get(timeout=1.0)
@@ -271,10 +283,12 @@ def speech_worker():
             continue
 
         if item is None:  # Stop signal
+            logger.info("Speech worker received stop signal")
             break
 
         # Check for stop signal - if present, clear queue and skip this item
         if check_and_clear_stop_signal():
+            logger.debug("Stop signal detected, clearing queue")
             # Clear all remaining items in queue
             while not speech_queue.empty():
                 try:
@@ -286,6 +300,7 @@ def speech_worker():
             continue  # Skip to next iteration (queue is now empty)
 
         text, voice, rate, use_neural = item
+        logger.debug(f"Processing speech: {text[:50]}... (neural={use_neural})")
         # Remove macOS-specific silence markup for neural backends
         clean_text = text.replace(f" [[slnc {TRAILING_SILENCE_MS}]]", "")
 
@@ -329,12 +344,21 @@ def speech_worker():
         speech_queue.task_done()
 
 
+_worker_lock = threading.Lock()
+
+
 def ensure_worker_running():
-    """Ensure the worker thread is running."""
+    """Ensure the worker thread is running. Thread-safe."""
     global worker_thread
-    if worker_thread is None or not worker_thread.is_alive():
-        worker_thread = threading.Thread(target=speech_worker, daemon=True)
-        worker_thread.start()
+    with _worker_lock:
+        if worker_thread is None or not worker_thread.is_alive():
+            logger.info("Starting new speech worker thread")
+            worker_thread = threading.Thread(target=speech_worker, daemon=True)
+            worker_thread.start()
+            # Give the thread a moment to start
+            time.sleep(0.01)
+        else:
+            logger.debug(f"Worker thread alive: {worker_thread.is_alive()}")
 
 
 # Trailing silence in milliseconds to prevent last word from being cut off
@@ -344,6 +368,7 @@ TRAILING_SILENCE_MS = 300
 @mcp.tool()
 def speak(text: str, voice: str | None = None, speed: float = 1.0) -> str:
     """Queue TTS without waiting. Args: text, voice, speed (1.0=normal)"""
+    logger.info(f"speak() called: {text[:50]}...")
     ensure_worker_running()
     rate = int(speed * 175)  # 175 words/min = normal speed
 
@@ -355,6 +380,7 @@ def speak(text: str, voice: str | None = None, speed: float = 1.0) -> str:
     text_with_silence = f"{text} [[slnc {TRAILING_SILENCE_MS}]]"
 
     speech_queue.put((text_with_silence, macos_voice, rate, use_neural))
+    logger.debug(f"Queued message, queue size: {speech_queue.qsize()}")
 
     backend_name = TTS_BACKEND if use_neural else voice
     return f"Queued ({backend_name})"
@@ -363,6 +389,7 @@ def speak(text: str, voice: str | None = None, speed: float = 1.0) -> str:
 @mcp.tool()
 def speak_and_wait(text: str, voice: str | None = None, speed: float = 1.1) -> str:
     """Speak and wait for completion. Args: text, voice, speed (1.1=default)"""
+    logger.info(f"speak_and_wait() called: {text[:50]}...")
     ensure_worker_running()
     rate = int(speed * 175)  # 175 words/min = normal speed
 
@@ -374,9 +401,12 @@ def speak_and_wait(text: str, voice: str | None = None, speed: float = 1.1) -> s
     text_with_silence = f"{text} [[slnc {TRAILING_SILENCE_MS}]]"
 
     speech_queue.put((text_with_silence, macos_voice, rate, use_neural))
+    logger.debug(f"Queued message, queue size: {speech_queue.qsize()}")
 
     # Wait for the queue to be processed
+    logger.debug("Waiting for queue to empty...")
     speech_queue.join()
+    logger.debug("Queue empty, speech completed")
 
     # Clear any segments recorded during TTS (feedback loop prevention)
     clear_listen_segments()
