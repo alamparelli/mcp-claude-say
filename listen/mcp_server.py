@@ -96,8 +96,13 @@ def start_ptt_mode(key: str = "cmd_r") -> str:
         log.info("PTT controller created, starting...")
         controller.start()
 
-        msg = f"PTT mode activated. Press {key.replace('_', ' ').title()} to toggle recording."
-        log.info(msg)
+        key_display = key.replace('_', ' ').title()
+        msg = f"""PTT mode activated. Press {key_display} to toggle recording.
+
+⚠️ Keys not working? Grant Accessibility permission:
+   System Settings → Privacy & Security → Accessibility → Enable your terminal app (VSCode, Terminal, Cursor, etc.)
+   Then restart the app."""
+        log.info(f"PTT mode activated with key={key}")
         return msg
 
     except Exception as e:

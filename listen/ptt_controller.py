@@ -39,8 +39,8 @@ class PTTState(Enum):
 @dataclass
 class PTTConfig:
     """Configuration for push-to-talk."""
-    # Key to use for PTT (default: left command + s)
-    key: str = "cmd_l+s"
+    # Key to use for PTT (default: right command - no conflicts, works everywhere)
+    key: str = "cmd_r"
 
     # Callback functions
     on_start_recording: Optional[Callable[[], None]] = None

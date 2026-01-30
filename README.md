@@ -196,9 +196,9 @@ Claude will speak its responses aloud.
 ```
 
 Full voice loop:
-1. Press **Left Cmd + S** to start recording
+1. Press **Right Command** to start recording
 2. Speak your message
-3. Press **Left Cmd + S** again to stop
+3. Press **Right Command** again to stop
 4. Claude transcribes and responds vocally
 5. Repeat!
 
@@ -208,8 +208,8 @@ Say **"fin de session"** to end the conversation.
 
 | Key | Description |
 |-----|-------------|
-| `cmd_l+s` | Left Command + S (default) |
-| `cmd_r` | Right Command (recommended for MacBooks) |
+| `cmd_r` | Right Command (default, recommended) |
+| `cmd_l+s` | Left Command + S |
 | `cmd_r+m` | Right Command + M |
 | `alt_l`, `alt_r` | Option keys |
 | `f13`, `f14`, `f15` | Function keys |
@@ -303,9 +303,29 @@ say "Hello world"
 ~/.mcp-claude-say/venv/bin/python -c "import sounddevice; print(sounddevice.query_devices())"
 ```
 
-### PTT key not detected
+### PTT key not detected (especially in VSCode)
 
-Make sure Claude Code (or Terminal) has Accessibility permissions in System Settings > Privacy & Security > Accessibility.
+The PTT hotkey uses `pynput` which requires **Accessibility permissions** on macOS. Without these permissions, the keyboard listener starts successfully but never receives key events.
+
+**To fix:**
+
+1. Open **System Settings** → **Privacy & Security** → **Accessibility**
+2. Click the **+** button (unlock with your password if needed)
+3. Add your terminal application:
+   - For VSCode: `/Applications/Visual Studio Code.app`
+   - For Cursor: `/Applications/Cursor.app`
+   - For Terminal: `/Applications/Utilities/Terminal.app`
+   - For iTerm2: `/Applications/iTerm.app`
+4. **Enable the checkbox** next to the app
+5. **Restart the application completely** (quit and reopen)
+
+**Still not working?**
+
+- Try a different hotkey: `start_ptt_mode("f13")` or `start_ptt_mode("alt_r")`
+- Check logs: `tail -f /tmp/claude-listen.log`
+- Verify pynput works: Run a simple pynput test script outside of Claude Code
+
+**Note:** Some keys may work without Accessibility permissions (like function keys F13-F15), but modifier keys (Cmd, Alt, Ctrl) always require permissions.
 
 ## Performance
 

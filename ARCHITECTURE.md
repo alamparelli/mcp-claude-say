@@ -63,7 +63,7 @@ This repository contains two complementary MCP servers for creating a complete v
 
 | Tool | Description |
 |------|-------------|
-| `start_ptt_mode(key?)` | Start PTT mode (default: `cmd_l+s`) |
+| `start_ptt_mode(key?)` | Start PTT mode (default: `cmd_r`) |
 | `stop_ptt_mode()` | Stop PTT mode |
 | `get_ptt_status()` | Get current status |
 | `get_segment_transcription(wait?, timeout?)` | Get transcribed text |
@@ -72,7 +72,7 @@ This repository contains two complementary MCP servers for creating a complete v
 
 ```
 1. start_ptt_mode() called
-2. User presses hotkey (Left Cmd + S)
+2. User presses hotkey (Right Command)
    → Recording starts
 3. User presses hotkey again
    → Recording stops
@@ -85,7 +85,8 @@ This repository contains two complementary MCP servers for creating a complete v
 
 | Key | Description |
 |-----|-------------|
-| `cmd_l+s` | Left Command + S (default) |
+| `cmd_r` | Right Command (default, recommended) |
+| `cmd_l+s` | Left Command + S |
 | `cmd_r+m` | Right Command + M |
 | `cmd_l`, `cmd_r` | Command keys alone |
 | `alt_l`, `alt_r` | Option keys |

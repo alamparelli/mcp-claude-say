@@ -23,7 +23,7 @@ Uses **simple Push-to-Talk (PTT)** mode:
 **Synchronous mode (blocking) - RECOMMENDED:**
 | Tool | Description |
 |------|-------------|
-| `start_ptt_mode(key?)` | Start PTT mode (default: Left Cmd + S) |
+| `start_ptt_mode(key?)` | Start PTT mode (default: Right Cmd) |
 | `stop_ptt_mode()` | Stop PTT mode |
 | `get_ptt_status()` | Get PTT state |
 | `get_segment_transcription(wait?, timeout?)` | Wait for transcription (default timeout: 120s). Returns status: [Ready], [Recording...], [Transcribing...] |
@@ -71,20 +71,20 @@ speak_and_wait("Final part that concludes the explanation.", speed=1)  # Only th
 ┌─────────────────────────────────────────────────┐
 │              Push-to-Talk Mode                  │
 │                                                 │
-│  [Left Cmd + S] → Start recording               │
+│  [Right Cmd] → Start recording                  │
 │       │                                         │
 │       │     (records continuously)              │
 │       │                                         │
-│  [Left Cmd + S] → Stop → Save → Transcribe      │
+│  [Right Cmd] → Stop → Save → Transcribe         │
 │       │                                         │
 │       ↓                                         │
 │  Claude responds vocally                        │
 └─────────────────────────────────────────────────┘
 ```
 
-1. User presses **Left Cmd + S** to start recording
+1. User presses **Right Command** to start recording
 2. Audio is captured continuously
-3. User presses **Left Cmd + S** again to stop
+3. User presses **Right Command** again to stop
 4. Audio is saved and transcribed with the configured STT engine
 5. Claude processes and responds **vocally**
 
@@ -92,7 +92,7 @@ speak_and_wait("Final part that concludes the explanation.", speed=1)  # Only th
 
 ```python
 # 1. Start PTT mode
-start_ptt_mode()  # Uses default key: cmd_l+s
+start_ptt_mode()  # Uses default key: cmd_r (Right Command)
 
 # 2. Confirm vocally (short message only)
 speak_and_wait("Prêt.")
@@ -213,9 +213,9 @@ speak_and_wait("Désactivé.")
 
 | Key | Name |
 |-----|------|
-| `cmd_l+s` | Left Command + S (default) |
+| `cmd_r` | Right Command (default, recommended) |
+| `cmd_l+s` | Left Command + S |
 | `cmd_r+m` | Right Command + M |
-| `cmd_r` | Right Command |
 | `cmd_l` | Left Command |
 | `alt_r` | Right Option |
 | `alt_l` | Left Option |
