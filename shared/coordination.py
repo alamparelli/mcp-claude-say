@@ -31,6 +31,7 @@ except ImportError:
 # Signal files for coordination
 STOP_SIGNAL_FILE = Path("/tmp/claude-voice-stop")
 TTS_COMPLETE_SIGNAL_FILE = Path("/tmp/claude-tts-complete")
+BARGE_IN_SIGNAL_FILE = Path("/tmp/claude-barge-in")
 
 
 def force_stop_tts() -> bool:
@@ -64,6 +65,10 @@ def force_stop_tts() -> bool:
             log.info("Killed 'afplay' process")
     except Exception as e:
         log.debug(f"Error killing afplay: {e}")
+
+    # Set barge-in signal to prevent subsequent speak_and_wait calls
+    BARGE_IN_SIGNAL_FILE.touch()
+    log.info("Barge-in signal file created (subsequent speak_and_wait will skip)")
 
     # Also set signal file to clear the queue in speech_worker
     STOP_SIGNAL_FILE.touch()
@@ -244,6 +249,21 @@ def clear_tts_complete_signal() -> None:
         try:
             TTS_COMPLETE_SIGNAL_FILE.unlink()
             log.debug("Cleared stale TTS complete signal")
+        except Exception:
+            pass
+
+
+def clear_barge_in_signal() -> None:
+    """
+    Clear the barge-in signal.
+
+    Called by claude-listen when transcription is ready,
+    allowing speak_and_wait to work again for the next conversation turn.
+    """
+    if BARGE_IN_SIGNAL_FILE.exists():
+        try:
+            BARGE_IN_SIGNAL_FILE.unlink()
+            log.info("Cleared barge-in signal (speak_and_wait re-enabled)")
         except Exception:
             pass
 

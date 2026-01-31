@@ -31,7 +31,7 @@ log.debug("ptt_controller imported")
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from shared.coordination import (
     signal_stop_speaking, is_speaking, force_stop_tts,
-    wait_for_tts_complete, clear_tts_complete_signal
+    wait_for_tts_complete, clear_tts_complete_signal, clear_barge_in_signal
 )
 log.debug("shared.coordination imported")
 
@@ -58,6 +58,11 @@ def _on_transcription_ready(text: str) -> None:
     log.info(f"Transcription ready: {text[:50]}...")
     _last_transcription = text
     _current_status = "ready"
+
+    # Clear barge-in signal to allow speak_and_wait to work again
+    # This marks the end of the interruption - Claude can speak again
+    clear_barge_in_signal()
+
     _transcription_ready.set()
 
 

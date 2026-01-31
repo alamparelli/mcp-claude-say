@@ -87,6 +87,9 @@ _configure_espeak()
 # Signal file for stop communication (shared with claude-listen)
 STOP_SIGNAL_FILE = Path("/tmp/claude-voice-stop")
 
+# Barge-in signal file - when exists, speak_and_wait skips immediately
+BARGE_IN_SIGNAL_FILE = Path("/tmp/claude-barge-in")
+
 
 def check_and_clear_stop_signal() -> bool:
     """Check if stop signal exists and clear it. Returns True if signal was present."""
@@ -107,6 +110,7 @@ current_process: subprocess.Popen | None = None
 current_afplay: subprocess.Popen | None = None  # Tracks afplay for Google TTS
 process_lock = threading.Lock()
 worker_thread: threading.Thread | None = None
+
 
 # TTS Backend selection (env-configurable)
 # Options: "kokoro" (local MLX, 82M), "chatterbox" (local neural, 11GB), "google" (cloud, needs API key), "macos" (built-in)
@@ -525,6 +529,12 @@ TRAILING_SILENCE_MS = 300
 def speak(text: str, voice: str | None = None, speed: float = 1.0) -> str:
     """Queue TTS without waiting. Args: text, voice, speed (1.0=normal)"""
     logger.info(f"speak() called: {text[:50]}...")
+
+    # Check if barge-in is active - if so, skip this message entirely
+    if BARGE_IN_SIGNAL_FILE.exists():
+        logger.info("Barge-in active (signal file exists), skipping speak")
+        return "Skipped (barge-in active)"
+
     ensure_worker_running()
     rate = int(speed * 175)  # 175 words/min = normal speed
 
@@ -550,6 +560,17 @@ def speak(text: str, voice: str | None = None, speed: float = 1.0) -> str:
 def speak_and_wait(text: str, voice: str | None = None, speed: float = 1.1) -> str:
     """Speak and wait for completion. Args: text, voice, speed (1.1=default)"""
     logger.info(f"speak_and_wait() called: {text[:50]}...")
+
+    # Check if barge-in is active - if so, skip this message entirely
+    # The barge-in file is created by stop_speaking/force_stop_tts
+    # and cleared by claude-listen when transcription is ready
+    if BARGE_IN_SIGNAL_FILE.exists():
+        logger.info("Barge-in active (signal file exists), skipping speak_and_wait")
+        return "Skipped (barge-in active)"
+
+    # Clear any stale stop signal from previous sessions
+    check_and_clear_stop_signal()
+
     ensure_worker_running()
     rate = int(speed * 175)  # 175 words/min = normal speed
 
@@ -591,11 +612,22 @@ def stop_speaking() -> str:
     """Stop current TTS and clear queue."""
     global current_process, current_afplay
 
-    # Clear the queue
+    # Set barge-in signal - this prevents subsequent speak_and_wait calls from playing
+    # The signal is cleared by claude-listen when transcription is ready
+    BARGE_IN_SIGNAL_FILE.touch()
+    logger.info("Barge-in signal set")
+
+    # Set stop signal FIRST - ensures speech_worker skips any item it already dequeued
+    # This prevents race condition where worker got next item before we clear queue
+    STOP_SIGNAL_FILE.touch()
+    logger.info("Stop signal set, clearing queue...")
+
+    # Clear the queue - MUST call task_done() for each item to unblock join()
     items_cleared = 0
     while not speech_queue.empty():
         try:
             speech_queue.get_nowait()
+            speech_queue.task_done()  # Critical: unblocks any waiting join()
             items_cleared += 1
         except Empty:
             break
