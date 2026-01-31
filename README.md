@@ -195,12 +195,15 @@ Claude will speak its responses aloud.
 /conversation
 ```
 
-Full voice loop:
+Full voice loop with automatic turn-taking:
 1. Press **Right Command** to start recording
 2. Speak your message
-3. Press **Right Command** again to stop
+3. Recording stops automatically when you finish speaking (VAD)
 4. Claude transcribes and responds vocally
-5. Repeat!
+5. Recording restarts automatically after Claude finishes
+6. Continue the conversation naturally!
+
+**Barge-in:** Press **Right Command** anytime to interrupt Claude mid-sentence.
 
 Say **"fin de session"** to end the conversation.
 
@@ -336,6 +339,41 @@ The PTT hotkey uses `pynput` which requires **Accessibility permissions** on mac
 | TTS Latency | < 100ms |
 
 > **Note:** The first transcription is slow (~10-15 seconds) as the Parakeet MLX model loads into memory. Subsequent transcriptions are near-instant.
+
+## Tested Environments
+
+| Environment | Status | Notes |
+|-------------|--------|-------|
+| **Terminal** (macOS native) | ✅ Works | |
+| **iTerm2** | ✅ Works | |
+| **Cursor** | ⚠️ Should work | Not yet tested |
+| **VSCode Terminal** + Claude Code CLI | ✅ Works | |
+| **VSCode** + Claude Code GUI extension | ❌ Not working | Conversation mode not stable |
+
+> **Help wanted!** If you test mcp-claude-say in other environments, please [open an issue](https://github.com/alamparelli/mcp-claude-say/issues) to report your results.
+
+## Changelog
+
+### v0.3.0 - Voice Conversation Mode (Jan 2026)
+
+**Kokoro TTS Backend** (PR #9)
+- New `kokoro` TTS backend using MLX-Audio with 54 voices across 9 languages
+- Supports English, Spanish, French, Italian, Portuguese, Japanese, Chinese, Hindi
+- Configure with `TTS_BACKEND=kokoro` and `KOKORO_VOICE=af_heart`
+
+**Seamless Conversation Flow**
+- **VAD auto-stop**: Recording stops automatically when you finish speaking
+- **Auto-start**: Recording restarts automatically after Claude responds
+- **Barge-in**: Press PTT to interrupt Claude mid-sentence
+- Press PTT once to start, then conversation flows naturally
+
+### v0.2.0 - TTS Configuration (Jan 2026)
+
+**Installer Improvements** (PR #7)
+- Interactive TTS backend selection (macOS, Google Cloud, Kokoro)
+- Google Cloud TTS setup wizard with API key and voice selection
+- Centralized configuration via `~/.mcp-claude-say/.env`
+- Model cache cleanup option during uninstall
 
 ## License
 
