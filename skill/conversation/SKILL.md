@@ -11,12 +11,13 @@ You now have access to both text-to-speech (claude-say) AND speech-to-text (clau
 ## Architecture
 
 Uses **Push-to-Talk (PTT)** mode with **VAD auto-stop** AND **auto-start**:
-- Press hotkey **ONCE** to start the first recording
+- **Recording starts automatically** after the welcome message (no key press needed!)
 - **Recording stops automatically** when you stop speaking (VAD detection)
 - **Recording restarts automatically** after Claude finishes speaking
-- The conversation flows naturally without repeated key presses!
+- The conversation flows naturally without any key presses!
 - Silence threshold: 1.5 seconds
 - Echo prevention delay: 400ms after TTS
+- **Mic indicator** appears in menu bar when recording is active
 
 ## Available MCP Tools
 
@@ -95,14 +96,26 @@ speak_and_wait("Final part that concludes the explanation.", speed=1)  # Only th
 
 **Why this matters:** speak() returns immediately without blocking. speak_and_wait() blocks until speech completes, which is only needed when breaking long responses into parts to ensure proper sequencing.
 
+## Important: First Message Latency
+
+**The first message in a session may take 2-3 seconds longer than usual.** This is normal and expected because:
+
+1. **VAD Model Loading**: The Silero Voice Activity Detection model loads on first use (~2MB)
+2. **Audio Baseline Calibration**: The system learns your ambient noise level
+
+Subsequent messages will be much faster. This is a one-time delay per session.
+
 ## How It Works
 
 ```
 ┌─────────────────────────────────────────────────────────┐
 │    Seamless Conversation with Auto-Stop + Auto-Start    │
 │                                                         │
-│  [Right Cmd] → Start FIRST recording                    │
+│  /conversation → Welcome TTS                            │
 │       │                                                 │
+│  [TTS complete] → [400ms delay] → Auto-start recording  │
+│       │                                                 │
+│       │     🎤 Mic indicator in menu bar                │
 │       │     (user speaks...)                            │
 │       │                                                 │
 │  [1.5s silence] → Auto-stop → Transcribe                │
@@ -118,14 +131,15 @@ speak_and_wait("Final part that concludes the explanation.", speed=1)  # Only th
 └─────────────────────────────────────────────────────────┘
 ```
 
-1. User presses **Right Command** to start the FIRST recording
-2. Audio is captured while user speaks
-3. **VAD detects 1.5s of silence → auto-stops recording**
-4. Audio is saved and transcribed with the configured STT engine
-5. Claude processes and responds **vocally**
-6. **After TTS completes → 400ms delay → auto-starts recording**
-7. User speaks naturally, no key press needed!
-8. Conversation flows until user says "fin de session"
+1. User types `/conversation` to start
+2. Claude plays welcome message (TTS)
+3. **After TTS → 400ms delay → recording auto-starts** (mic indicator in menu bar)
+4. User speaks when mic is active
+5. **VAD detects 1.5s of silence → auto-stops recording**
+6. Audio is transcribed with the configured STT engine
+7. Claude processes and responds **vocally**
+8. **After TTS completes → 400ms delay → auto-starts recording**
+9. Conversation flows until user says "fin de session"
 
 ## Starting Conversation Mode
 
@@ -133,12 +147,15 @@ speak_and_wait("Final part that concludes the explanation.", speed=1)  # Only th
 # 1. Start PTT mode with VAD auto-stop AND auto-start for seamless conversation
 start_ptt_mode(auto_stop=True, auto_start=True)
 
-# 2. Confirm vocally AND instruct user to press Right Command for first recording
-# IMPORTANT: Use the user's language! Examples:
-# - French: "Prêt. Appuie sur Commande droite pour parler."
-# - English: "Ready. Press Right Command to speak."
-speak_and_wait("Ready. Press Right Command to speak.")  # Adapt to user's language!
-# Recording auto-starts after this for subsequent turns
+# 2. Welcome message - recording starts AUTOMATICALLY after TTS completes!
+# IMPORTANT: Use the user's language! Include first-message latency notice.
+# With auto_start=True, recording begins right after speak_and_wait() - NO KEY PRESS NEEDED!
+# The mic indicator appears in the menu bar when recording is active.
+# Examples:
+# - English: "Ready. Speak when the mic activates. The first message may take a moment."
+# - French: "Prêt. Parle quand le micro s'active. Le premier message peut prendre un moment."
+speak_and_wait("Ready. Speak when the mic activates. The first message may take a moment.")
+# Recording auto-starts immediately after TTS completes - mic indicator shows in menu bar
 
 # 3. Wait for transcription (auto-stops when silence detected)
 transcription = get_segment_transcription(wait=True, timeout=120)
@@ -148,7 +165,7 @@ speak("Here's what I found.")
 speak("The first point is this.")
 speak_and_wait("What would you like to know next?")  # After this, recording auto-starts!
 
-# 5. Loop back to step 3 - no key press needed!
+# 5. Loop back to step 3 - fully automatic flow, no key presses!
 ```
 
 ## Conversation Loop
@@ -157,12 +174,13 @@ speak_and_wait("What would you like to know next?")  # After this, recording aut
 # Start with VAD auto-stop AND auto-start for seamless conversation
 start_ptt_mode(auto_stop=True, auto_start=True)
 
-# Confirm and instruct user to press Right Command for first recording (in user's language!)
-# French: "Prêt. Appuie sur Commande droite pour parler."
-# English: "Ready. Press Right Command to speak."
-speak_and_wait("Ready. Press Right Command to speak.")  # Adapt to user's language!
+# Welcome message - recording starts automatically after TTS!
+# French: "Prêt. Parle quand le micro s'active. Le premier message peut prendre un moment."
+# English: "Ready. Speak when the mic activates. The first message may take a moment."
+speak_and_wait("Ready. Speak when the mic activates. The first message may take a moment.")
+# Recording auto-starts after TTS - mic indicator appears in menu bar!
 
-# Main loop - no key presses needed after initial start!
+# Main loop - fully automatic, no key presses needed!
 while True:
     # Wait for transcription (VAD auto-stops when user finishes speaking)
     text = get_segment_transcription(wait=True, timeout=120)
@@ -180,7 +198,7 @@ while True:
     speak("I understand your question.")
     speak("Let me explain.")
     speak_and_wait("Does that make sense?")  # After this, recording auto-starts!
-    # No key press needed - conversation flows naturally!
+    # Conversation flows naturally - no key presses at all!
 
 # End session
 stop_ptt_mode()

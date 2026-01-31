@@ -497,17 +497,27 @@ if [[ ! -d "venv" ]] || [[ "$UPDATE_MODE" == false ]]; then
     python3 -m venv venv
 fi
 source venv/bin/activate
-pip install --quiet --upgrade pip
-pip install --quiet -r "$REQUIREMENTS_FILE"
+
+echo -e "       ${CYAN}Upgrading pip...${NC}"
+pip install --upgrade pip
+
+echo -e "       ${CYAN}Installing base dependencies...${NC}"
+pip install -r "$REQUIREMENTS_FILE"
+echo -e "       ${GREEN}✓ Base dependencies installed${NC}"
 
 # Install mlx-audio if Kokoro backend is selected
 if [[ "$TTS_BACKEND" == "kokoro" ]]; then
-    echo -e "       ${CYAN}Installing mlx-audio + dependencies for Kokoro TTS...${NC}"
+    echo ""
+    echo -e "       ${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e "       ${CYAN}Installing Kokoro TTS dependencies...${NC}"
+    echo -e "       ${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 
     # Install espeak-ng for non-English phonemization (French, etc.)
     if ! command -v espeak-ng &> /dev/null; then
         echo -e "       ${CYAN}Installing espeak-ng (required for French/multilingual)...${NC}"
         brew install espeak-ng 2>/dev/null || echo -e "       ${YELLOW}Warning: Install espeak-ng manually for French support${NC}"
+    else
+        echo -e "       ${GREEN}✓ espeak-ng already installed${NC}"
     fi
 
     # Create espeak symlink if needed (phonemizer looks for 'espeak')
@@ -515,18 +525,31 @@ if [[ "$TTS_BACKEND" == "kokoro" ]]; then
         sudo ln -sf "$(which espeak-ng)" /usr/local/bin/espeak 2>/dev/null || true
     fi
 
-    pip install --quiet -r "$INSTALL_DIR/requirements-mlx-audio.txt"
+    echo -e "       ${CYAN}Installing mlx-audio (this may take a few minutes)...${NC}"
+    pip install -r "$INSTALL_DIR/requirements-mlx-audio.txt"
+    echo -e "       ${GREEN}✓ mlx-audio installed${NC}"
 
     # Download spacy model for text processing
-    echo -e "       ${CYAN}Downloading spacy language model...${NC}"
-    python -m spacy download en_core_web_sm --quiet 2>/dev/null || true
+    echo -e "       ${CYAN}Downloading spacy language model (~40MB)...${NC}"
+    python -m spacy download en_core_web_sm 2>/dev/null || true
+    echo -e "       ${GREEN}✓ Spacy model downloaded${NC}"
+
+    echo ""
+    echo -e "       ${YELLOW}Note: Kokoro voice model (~500MB) will download on first use${NC}"
 fi
 
 # Install VAD (torch + torchaudio) if requested
 if [[ "$INSTALL_VAD" == true ]]; then
-    echo -e "       ${CYAN}Installing PyTorch + torchaudio for VAD auto-stop (~2GB)...${NC}"
-    pip install --quiet torch torchaudio jinja2 "sympy>=1.13.3"
-    echo -e "       ${GREEN}PyTorch + torchaudio installed for VAD${NC}"
+    echo ""
+    echo -e "       ${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e "       ${CYAN}Installing VAD dependencies (~2GB download)${NC}"
+    echo -e "       ${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e "       ${YELLOW}This may take several minutes...${NC}"
+    echo ""
+    pip install torch torchaudio jinja2 "sympy>=1.13.3"
+    echo ""
+    echo -e "       ${GREEN}✓ PyTorch + torchaudio installed${NC}"
+    echo -e "       ${YELLOW}Note: Silero VAD model (~2MB) will download on first use${NC}"
 fi
 
 # Build SpeechAnalyzer CLI if needed
@@ -647,7 +670,8 @@ if [[ "$INSTALL_MODE" == "parakeet" ]]; then
     "$INSTALL_DIR/venv/bin/python" -c "from parakeet_mlx import from_pretrained; print('OK')" 2>/dev/null && {
         echo -e "  ${GREEN}✓${NC} Parakeet-MLX ready"
     } || {
-        echo -e "  ${YELLOW}!${NC} Parakeet-MLX will download on first use (~2.3GB)"
+        echo -e "  ${YELLOW}!${NC} Parakeet-MLX model will download on first use (~2.3GB)"
+        echo -e "     ${YELLOW}The first transcription may take longer while the model downloads${NC}"
     }
 fi
 
@@ -674,6 +698,7 @@ fi
 if [[ "$INSTALL_VAD" == true ]]; then
     "$INSTALL_DIR/venv/bin/python" -c "import torch; import torchaudio; print('OK')" 2>/dev/null && {
         echo -e "  ${GREEN}✓${NC} VAD auto-stop ready (Silero VAD)"
+        echo -e "     ${YELLOW}Silero model (~2MB) downloads on first use${NC}"
     } || {
         echo -e "  ${YELLOW}!${NC} VAD: Silero model will download on first use (~2MB)"
     }
@@ -724,16 +749,49 @@ case $INSTALL_MODE in
         echo -e "  2. Type ${BLUE}/speak${NC} for TTS only"
         echo -e "  3. Type ${BLUE}/conversation${NC} for full voice loop"
         echo ""
-        echo -e "${YELLOW}Push-to-Talk:${NC}"
-        echo -e "  Default key: ${BLUE}Right Command${NC}"
         if [[ "$INSTALL_VAD" == true ]]; then
-            echo -e "  Press to start - ${GREEN}stops automatically when you stop speaking${NC}"
-            echo -e "  (VAD auto-stop enabled)"
+            echo -e "${YELLOW}Voice Mode:${NC}"
+            echo -e "  With VAD enabled, conversation is ${GREEN}fully automatic${NC}!"
+            echo -e "  Just type /conversation and speak when the mic activates."
+            echo -e "  Recording starts/stops automatically based on voice detection."
         else
+            echo -e "${YELLOW}Push-to-Talk:${NC}"
+            echo -e "  Default key: ${BLUE}Right Command${NC}"
             echo -e "  Press once to start, press again to stop"
         fi
         ;;
 esac
+
+# Show first-use download warnings
+FIRST_USE_DOWNLOADS=false
+if [[ "$INSTALL_MODE" == "parakeet" ]]; then
+    FIRST_USE_DOWNLOADS=true
+fi
+if [[ "$TTS_BACKEND" == "kokoro" ]]; then
+    FIRST_USE_DOWNLOADS=true
+fi
+if [[ "$INSTALL_VAD" == true ]]; then
+    FIRST_USE_DOWNLOADS=true
+fi
+
+if [[ "$FIRST_USE_DOWNLOADS" == true ]]; then
+    echo ""
+    echo -e "${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e "${YELLOW}  First-Use Downloads${NC}"
+    echo -e "${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e "  Some models download on first use. This is normal!"
+    echo -e "  The first message may take longer while models load."
+    echo ""
+    if [[ "$INSTALL_MODE" == "parakeet" ]]; then
+        echo -e "  • ${CYAN}Parakeet STT${NC}: ~2.3GB (first transcription)"
+    fi
+    if [[ "$TTS_BACKEND" == "kokoro" ]]; then
+        echo -e "  • ${CYAN}Kokoro TTS${NC}: ~500MB (first speech)"
+    fi
+    if [[ "$INSTALL_VAD" == true ]]; then
+        echo -e "  • ${CYAN}Silero VAD${NC}: ~2MB (first voice detection)"
+    fi
+fi
 
 echo ""
 echo -e "${YELLOW}To change TTS settings:${NC} edit ${BLUE}$ENV_FILE${NC} then restart Claude Code"
