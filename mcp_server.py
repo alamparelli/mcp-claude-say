@@ -628,5 +628,97 @@ def stop_speaking() -> str:
     return f"Nothing playing. {items_cleared} message(s) cleared from queue."
 
 
+# ============================================================================
+# Stop Hotkey Mode (for TTS-only /speak mode)
+# ============================================================================
+
+# Hotkey listener for TTS-only mode
+_stop_hotkey_listener = None
+_stop_hotkey_lock = threading.Lock()
+
+# Key mapping (subset of ptt_controller keys)
+try:
+    from pynput import keyboard
+    PYNPUT_AVAILABLE = True
+    STOP_KEY_MAP = {
+        "cmd_r": keyboard.Key.cmd_r,
+        "cmd_l": keyboard.Key.cmd_l,
+        "alt_r": keyboard.Key.alt_r,
+        "alt_l": keyboard.Key.alt_l,
+        "f13": keyboard.Key.f13,
+        "f14": keyboard.Key.f14,
+        "f15": keyboard.Key.f15,
+    }
+except ImportError:
+    PYNPUT_AVAILABLE = False
+    STOP_KEY_MAP = {}
+
+
+def _on_stop_key_press(key):
+    """Handle stop hotkey press - stop TTS and clear queue."""
+    global _stop_hotkey_listener
+
+    # Check if this is our configured key
+    configured_key = getattr(_stop_hotkey_listener, '_configured_key', None)
+    if configured_key and key == configured_key:
+        logger.info("🔇 Stop hotkey pressed - stopping TTS")
+        stop_speaking()
+
+
+@mcp.tool()
+def start_stop_hotkey(key: str = "cmd_r") -> str:
+    """Start hotkey listener to stop TTS. Press key to stop speech and clear queue.
+
+    Args:
+        key: Hotkey to stop TTS. Options: cmd_r, cmd_l, alt_r, alt_l, f13, f14, f15
+    """
+    global _stop_hotkey_listener
+
+    if not PYNPUT_AVAILABLE:
+        return "Error: pynput not installed. Run: pip install pynput"
+
+    if key not in STOP_KEY_MAP:
+        return f"Error: Unknown key '{key}'. Available: {list(STOP_KEY_MAP.keys())}"
+
+    with _stop_hotkey_lock:
+        if _stop_hotkey_listener is not None:
+            return f"Stop hotkey already active. Press {key} to stop TTS."
+
+        target_key = STOP_KEY_MAP[key]
+
+        def on_press(pressed_key):
+            if pressed_key == target_key:
+                logger.info("🔇 Stop hotkey pressed - stopping TTS + clearing queue")
+                stop_speaking()
+
+        _stop_hotkey_listener = keyboard.Listener(on_press=on_press)
+        _stop_hotkey_listener._configured_key = target_key
+        _stop_hotkey_listener.start()
+
+        key_display = key.replace('_', ' ').title()
+        logger.info(f"Stop hotkey activated: {key_display}")
+
+        return f"""Stop hotkey activated. Press {key_display} to stop TTS and clear queue.
+
+⚠️ Key not working? Grant Accessibility permission:
+   System Settings → Privacy & Security → Accessibility → Enable your terminal app"""
+
+
+@mcp.tool()
+def stop_stop_hotkey() -> str:
+    """Stop the TTS stop hotkey listener."""
+    global _stop_hotkey_listener
+
+    with _stop_hotkey_lock:
+        if _stop_hotkey_listener is None:
+            return "Stop hotkey not active."
+
+        _stop_hotkey_listener.stop()
+        _stop_hotkey_listener = None
+
+        logger.info("Stop hotkey deactivated")
+        return "Stop hotkey deactivated."
+
+
 if __name__ == "__main__":
     mcp.run()

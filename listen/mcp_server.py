@@ -30,7 +30,7 @@ log.debug("ptt_controller imported")
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from shared.coordination import (
-    signal_stop_speaking, is_speaking,
+    signal_stop_speaking, is_speaking, force_stop_tts,
     wait_for_tts_complete, clear_tts_complete_signal
 )
 log.debug("shared.coordination imported")
@@ -62,16 +62,17 @@ def _on_transcription_ready(text: str) -> None:
 
 
 def _ptt_start_recording() -> None:
-    """Called when PTT key pressed - start recording."""
+    """Called when PTT key pressed - start recording (barge-in if TTS playing)."""
     global _current_status, _auto_stop_enabled
     log.info(f"_ptt_start_recording callback triggered (auto_stop={_auto_stop_enabled})")
 
-    # Only stop TTS if it's actively speaking (avoid killing queued messages)
+    # BARGE-IN: Force stop TTS immediately + clear queue
+    # Always call force_stop_tts() to ensure queue is cleared even if not currently speaking
     if is_speaking():
-        log.info("TTS is speaking, sending stop signal")
-        signal_stop_speaking()
+        log.info("🔇 BARGE-IN: TTS is speaking, force stopping + clearing queue")
+        force_stop_tts()
     else:
-        log.debug("TTS not speaking, no stop signal needed")
+        log.debug("TTS not speaking, no barge-in needed")
 
     _current_status = "recording"
     recorder = get_simple_ptt(

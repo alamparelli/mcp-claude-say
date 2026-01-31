@@ -33,12 +33,53 @@ STOP_SIGNAL_FILE = Path("/tmp/claude-voice-stop")
 TTS_COMPLETE_SIGNAL_FILE = Path("/tmp/claude-tts-complete")
 
 
+def force_stop_tts() -> bool:
+    """
+    Force stop all TTS playback immediately.
+
+    Kills say/afplay processes directly (immediate) + sets signal file (clears queue).
+    This is the preferred method for barge-in as it's instantaneous.
+
+    Returns:
+        True if any process was killed or signal was sent
+    """
+    log.info("force_stop_tts() called - killing TTS processes")
+
+    killed = False
+
+    # Kill macOS say process
+    try:
+        result = subprocess.run(["pkill", "-x", "say"], capture_output=True)
+        if result.returncode == 0:
+            killed = True
+            log.info("Killed 'say' process")
+    except Exception as e:
+        log.debug(f"Error killing say: {e}")
+
+    # Kill afplay process (used by Kokoro/Google TTS)
+    try:
+        result = subprocess.run(["pkill", "-x", "afplay"], capture_output=True)
+        if result.returncode == 0:
+            killed = True
+            log.info("Killed 'afplay' process")
+    except Exception as e:
+        log.debug(f"Error killing afplay: {e}")
+
+    # Also set signal file to clear the queue in speech_worker
+    STOP_SIGNAL_FILE.touch()
+    log.info("Stop signal file created (queue will be cleared)")
+
+    return killed or True  # Always return True since signal file is set
+
+
 def signal_stop_speaking() -> bool:
     """
     Signal claude-say to stop speaking.
 
     This is called by claude-listen when speech is detected,
     to interrupt the TTS output.
+
+    NOTE: For immediate barge-in, use force_stop_tts() instead.
 
     Returns:
         True if signal was sent successfully

@@ -15,6 +15,8 @@ You now have access to text-to-speech via the `claude-say` MCP server.
 | `speak(text, voice?, speed?)` | Add text to queue, returns immediately (preferred for natural flow) |
 | `speak_and_wait(text, voice?, speed?)` | Speak and block until complete (use when expecting a response) |
 | `stop_speaking()` | Stop immediately and clear the queue |
+| `start_stop_hotkey(key?)` | Enable stop hotkey (default: cmd_r) - press to stop TTS anytime |
+| `stop_stop_hotkey()` | Disable the stop hotkey |
 
 ### When to use which tool
 
@@ -58,6 +60,20 @@ The skill supports three voice communication modes:
   - Each speak() call stays digestible (4-5 sentences max) but chains logically
 - **Speed**: 1.0 (normal to facilitate understanding)
 - **Deactivation**: "brief mode" / "that's enough" / "ok thanks"
+
+## Starting Voice Mode
+
+When activating /speak mode:
+
+```python
+# 1. Enable stop hotkey so user can interrupt anytime with Right Command
+start_stop_hotkey()
+
+# 2. Confirm activation (brief!)
+speak("Voice mode activated.")
+```
+
+The user can press **Right Command** at any time to stop speech and clear the queue.
 
 ## General Rules
 
@@ -110,9 +126,10 @@ speak("The Controller bridges the two. It receives user actions, calls the Model
 
 ## User Commands
 
+- **Right Command key**: Stop TTS immediately + clear queue (hotkey, instant)
 - **"stop"** / **"silence"**: Call `stop_speaking()` immediately
 - **"skip"** / **"next"**: Call `skip()`
-- **"vocal off"** / **"voice off"**: Disable voice mode (stop using speak)
+- **"vocal off"** / **"voice off"**: Disable voice mode (`stop_stop_hotkey()` then stop using speak)
 - **"brainstorming mode"**: Activate brainstorming mode
 - **"complete mode"**: Activate complete/detailed mode
 - **"brief mode"**: Return to brief mode (default)
